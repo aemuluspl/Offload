@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0c0d10">
+    <link rel="manifest" href='data:application/manifest+json,{"name":"offload","short_name":"offload","display":"standalone","background_color":"#0c0d10","theme_color":"#0c0d10"}'>
+    <title>offload</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #0c0d10;
+            --bg-card: #1b1d22;
+            --bg-graph: #181a1f;
+            --border-color: rgba(255, 255, 255, 0.14);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --nav-speed: 180ms;
+        }
+
+        body.light-mode {
+            --bg-main: #f1f5f9;
+            --bg-card: #ffffff;
+            --bg-graph: #f8fafc;
+            --border-color: rgba(0, 0, 0, 0.12);
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #050507;
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Имитация экрана смартфона на десктопе и полноэкранный режим на телефоне */
+        .phone-frame {
+            width: 100%;
+            max-width: 412px;
+            height: 100vh;
+            max-height: 915px;
+            background-color: var(--bg-main);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        @media (min-width: 440px) {
+            .phone-frame {
+                height: 92vh;
+                border-radius: 46px;
+                box-shadow: 0 0 0 10px #1f2024, 0 0 0 12px #383a40, 0 25px 60px rgba(0,0,0,0.85);
+            }
+        }
+
+        /* Контейнер графа: оставляем оригинальный прямоугольный скос углов */
+        .graph-box {
+            background-color: var(--bg-graph);
+            border: 1.5px solid var(--border-color);
+            border-radius: 26px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+            box-shadow: inset 0 0 35px rgba(0, 0, 0, 0.45);
+        }
+
+        /* Состояние в настройках: граф скрыт и превращён в полужидкую каплю сверху */
+        .graph-box.liquid-drop-mode {
+            position: absolute;
+            top: 66px;
+            left: 50%;
+            width: 220px !important;
+            height: 145px !important;
+            margin-top: 0 !important;
+            border-radius: 38px 38px 48px 48px / 30px 30px 54px 54px;
+            transform: translate(-50%, -26px) scale(0.72);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 45;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.75), inset 0 0 24px rgba(74, 222, 128, 0.16);
+        }
+
+        .graph-box.liquid-drop-mode.drop-visible {
+            transform: translate(-50%, 0) scale(1);
+            opacity: 0.97;
+            pointer-events: auto;
+        }
+
+        /* Аккуратный полноэкранный режим строго внутри рамок смартфона */
+        .graph-box.expanded {
+            position: absolute;
+            top: 68px;
+            left: 16px;
+            right: 16px;
+            bottom: 96px;
+            width: auto !important;
+            height: auto !important;
+            z-index: 40;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85), inset 0 0 35px rgba(0, 0, 0, 0.45);
+        }
+
+        /* Все остальные элементы имеют скос углов как у навбара (rounded-full / 9999px) */
+        .pill-element {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 9999px;
+            transition: transform 0.15s ease, background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .pill-element:active {
+            transform: scale(0.985);
+        }
+
+        .circle-btn {
+            width: 46px;
+            height: 46px;
+            border-radius: 9999px;
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: transform 0.15s ease, background-color 0.25s ease;
+            flex-shrink: 0;
+        }
+
+        .circle-btn:active {
+            transform: scale(0.92);
+        }
+
+        /* Зелёная точка (ровно одна, без второго спутника) */
+        .green-core {
+            width: 13px;
+            height: 13px;
+            background-color: #4ade80;
+            border-radius: 50%;
+            box-shadow: 0 0 12px 3px rgba(74, 222, 128, 0.65);
+            transition: all 0.3s ease;
+        }
+
+        .green-core.offline {
+            background-color: #f59e0b;
+            box-shadow: 0 0 12px 3px rgba(245, 158, 11, 0.65);
+        }
+
+        /* Плавный индикатор навбара с настраиваемой скоростью */
+        .liquid-indicator {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 56px;
+            height: 56px;
+            border-radius: 9999px;
+            background-color: #ffffff;
+            box-shadow: 0 0 24px rgba(255, 255, 255, 0.48);
+            pointer-events: none;
+            z-index: 1;
+            transform: translateY(-50%);
+            transition: transform var(--nav-speed) cubic-bezier(0.22, 1, 0.36, 1), width var(--nav-speed) cubic-bezier(0.22, 1, 0.36, 1), background-color 0.3s ease;
+        }
+
+        body.light-mode .liquid-indicator {
+            background-color: #0f172a;
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.35);
+        }
+
+        .nav-icon-btn {
+            position: relative;
+            z-index: 2;
+            width: 56px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            border-radius: 9999px;
+            transition: color 0.25s ease, transform 0.15s ease;
+        }
+
+        .nav-icon-btn.active {
+            color: #0c0d10;
+        }
+
+        body.light-mode .nav-icon-btn.active {
+            color: #ffffff;
+        }
+
+        .nav-icon-btn:active {
+            transform: scale(0.9);
+        }
+
+        /* Кастомный скроллбар для списка заметок */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        @keyframes pulse-mic {
+            0%, 100% { transform: scale(1); color: #ef4444; }
+            50% { transform: scale(1.22); color: #f87171; }
+        }
+        .recording-mic {
+            animation: pulse-mic 1.1s infinite ease-in-out;
+        }
+
+        /* Ползунок скорости в настройках */
+        input[type="range"].speed-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.14);
+            border-radius: 9999px;
+            outline: none;
+        }
+        body.light-mode input[type="range"].speed-slider {
+            background: rgba(15, 23, 42, 0.15);
+        }
+        input[type="range"].speed-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #4ade80;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(74, 222, 128, 0.6);
+            transition: transform 0.15s ease;
+        }
+        input[type="range"].speed-slider::-webkit-slider-thumb:active {
+            transform: scale(1.18);
+        }
+    </style>
+</head>
+<body>
+
+<div class="phone-frame px-4 pt-3 pb-2 select-none" id="appFrame">
+
+    <!-- Верхняя панель: Тема, Поиск, Одиночный зелёный индикатор -->
+    <div class="flex items-center justify-between gap-3 mt-1 z-20">
+        <!-- Кнопка переключения темы -->
+        <button id="themeBtn" class="circle-btn" title="Сменить тему">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+                <circle cx="12" cy="12" r="5"></circle>
+                <path d="M12 7a5 5 0 0 1 0 10V7z" fill="currentColor"></path>
+                <line x1="12" y1="2" x2="12" y2="4"></line>
+                <line x1="12" y1="20" x2="12" y2="22"></line>
+                <line x1="4.93" y1="4.93" x2="6.34" y2="6.34"></line>
+                <line x1="17.66" y1="17.66" x2="19.07" y2="19.07"></line>
+                <line x1="2" y1="12" x2="4" y2="12"></line>
+                <line x1="20" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="19.07" x2="6.34" y2="17.66"></line>
+                <line x1="17.66" y1="6.34" x2="19.07" y2="4.93"></line>
+            </svg>
+        </button>
+
+        <!-- Поле поиска (форма капсулы как у навбара) -->
+        <div class="pill-element flex-1 h-[46px] flex items-center px-4 gap-2.5">
+            <svg class="w-5 h-5 text-neutral-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="7"></circle>
+                <line x1="20" y1="20" x2="16.35" y2="16.35"></line>
+            </svg>
+            <input id="searchInput" type="text" placeholder="Search..." 
+                class="bg-transparent border-none outline-none w-full text-[15px] placeholder-neutral-400 text-current" />
+            <button id="clearSearchBtn" class="hidden text-neutral-400 hover:text-white text-xs">✕</button>
+        </div>
+
+        <!-- Правая кнопка с ОДНИМ зелёным индикатором (спутник убран) -->
+        <button id="syncStatusBtn" class="circle-btn relative" title="Статус памяти offload">
+            <div id="greenCore" class="green-core"></div>
+        </button>
+    </div>
+
+    <!-- Увеличенный прямоугольник с 3D-шаром графа -->
+    <div id="graphContainer" class="graph-box w-full h-[360px] mt-3 flex-shrink-0">
+        <canvas id="graphCanvas" class="w-full h-full block cursor-grab active:cursor-grabbing touch-none"></canvas>
+        
+        <!-- Количество узлов (название offload убрано с главного экрана) -->
+        <div class="absolute top-3.5 left-4 pointer-events-none flex items-center gap-1.5 text-[11px] text-neutral-400/80 font-medium">
+            <span id="graphCountLabel">2 узла</span>
+        </div>
+
+        <!-- Кнопка разворота графа -->
+        <button id="expandGraphBtn" class="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center text-neutral-400 hover:text-white bg-black/25 hover:bg-white/15 backdrop-blur-sm transition" title="Развернуть/Свернуть">
+            <svg id="expandIcon" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <polyline points="9 21 3 21 3 15"></polyline>
+                <line x1="21" y1="3" x2="14" y2="10"></line>
+                <line x1="3" y1="21" x2="10" y2="14"></line>
+            </svg>
+        </button>
+
+        <!-- Плашка подсказки выбранного узла -->
+        <div id="nodeBadge" class="hidden absolute bottom-3 left-3.5 bg-black/75 backdrop-blur-md border border-white/15 text-xs px-3 py-1 rounded-full text-neutral-200 pointer-events-none">
+            Фильтр: <span id="nodeBadgeText" class="font-semibold text-emerald-400"></span>
+        </div>
+    </div>
+
+    <!-- Центральная рабочая область: Заметки + Ввод ИЛИ Заглушка ИЛИ Настройки -->
+    <div class="flex-1 flex flex-col justify-between min-h-0 my-3 overflow-hidden relative z-10">
+
+        <!-- Основной экран: Заметки СЕГОДНЯ и строка добавления мысли -->
+        <div id="mainContentArea" class="flex-1 flex flex-col justify-between min-h-0 overflow-hidden">
+            <div class="flex items-center justify-between px-1 mb-2 shrink-0">
+                <span class="text-[12px] font-bold tracking-wider text-neutral-400 uppercase">СЕГОДНЯ</span>
+                <button id="resetFilterBtn" class="hidden text-xs text-emerald-400 hover:underline font-medium">Сбросить фильтр ✕</button>
+            </div>
+
+            <!-- Прокручиваемый список заметок -->
+            <div id="notesList" class="flex-1 overflow-y-auto no-scrollbar space-y-2.5 pr-0.5 min-h-0">
+                <!-- Заполняется скриптом -->
+            </div>
+
+            <!-- Поле ввода новой заметки/мысли -->
+            <div class="pill-element h-[50px] px-4 mt-2.5 flex items-center justify-between gap-2 shrink-0">
+                <button id="addThoughtBtn" class="text-neutral-400 hover:text-white text-xl leading-none font-light px-1 transition" title="Добавить мысль">+</button>
+                <input id="thoughtInput" type="text" placeholder="Наговорить или записать мысль..." 
+                    class="bg-transparent border-none outline-none w-full text-[14px] placeholder-neutral-400 text-current" />
+                <button id="voiceBtn" class="text-neutral-400 hover:text-white p-1.5 rounded-full transition" title="Голосовой ввод">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Заглушка для вкладок Аналитика и Тренды -->
+        <div id="wipPlaceholder" class="hidden flex-1 flex flex-col items-center justify-center text-center p-6">
+            <div class="pill-element px-6 py-5 flex flex-col items-center gap-2 max-w-xs">
+                <span class="text-2xl">🛠️</span>
+                <span id="wipSectionName" class="text-sm font-semibold">Раздел в разработке</span>
+                <span class="text-xs text-neutral-400">Скоро здесь появится подробная статистика ваших мыслей и связей</span>
+            </div>
+        </div>
+
+        <!-- Экран Настроек (без постоянного графа, с всплывающей полужидкой каплей предпросмотра) -->
+        <div id="settingsArea" class="hidden flex-1 flex flex-col justify-start min-h-0 overflow-y-auto no-scrollbar space-y-2.5 pr-0.5 pt-1">
+            <div class="flex items-center justify-between px-1">
+                <span class="text-[13px] font-semibold tracking-wider text-neutral-300 uppercase">НАСТРОЙКИ</span>
+                <span id="storageStatusBadge" class="text-[11px] text-emerald-400 font-medium">Капля-превью активна</span>
+            </div>
+
+            <!-- Режим приложения без адресной строки (Fullscreen / PWA) -->
+            <div class="pill-element px-5 py-3 flex items-center justify-between gap-3">
+                <div class="flex flex-col">
+                    <span class="text-[13px] font-semibold">Режим приложения (без строки)</span>
+                    <span class="text-[10px] text-neutral-400">Скрыть панели браузера на весь экран</span>
+                </div>
+                <button id="fullscreenAppBtn" class="px-3.5 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-semibold hover:bg-emerald-500/30 transition shrink-0">
+                    Во весь экран
+                </button>
+            </div>
+
+            <!-- Ширина нод и связей в графе (вызывает каплю-превью сверху) -->
+            <div class="pill-element px-5 py-3.5 flex flex-col gap-1.5">
+                <div class="flex items-center justify-between text-[13px] font-medium">
+                    <span>Ширина нод и нитей</span>
+                    <span id="nodeScaleLabel" class="text-emerald-400 font-bold">1.0x</span>
+                </div>
+                <input id="nodeScaleSlider" type="range" min="0.5" max="2.2" step="0.1" value="1.0" class="speed-slider" />
+                <div class="flex justify-between text-[10px] text-neutral-400">
+                    <span>Тонкие (0.5x)</span>
+                    <span>Стандарт (1.0x)</span>
+                    <span>Крупные (2.2x)</span>
+                </div>
+            </div>
+
+            <!-- Изменение цвета конкретной заметки в графе -->
+            <div class="pill-element px-5 py-3.5 flex flex-col gap-2">
+                <div class="flex items-center justify-between text-[13px] font-medium">
+                    <span>Цвет одной заметки</span>
+                    <button id="previewDropManualBtn" class="text-[11px] text-emerald-400 hover:underline">Показать каплю</button>
+                </div>
+                <select id="noteColorSelect" class="w-full bg-black/25 border border-white/10 rounded-full px-3.5 py-1.5 text-xs text-current outline-none">
+                    <!-- Заполняется динамически списком заметок -->
+                </select>
+                <div id="colorSwatches" class="flex items-center justify-between gap-1.5 pt-0.5">
+                    <button data-color="" class="color-swatch-btn w-6 h-6 rounded-full border border-white/30 bg-zinc-200 flex items-center justify-center text-[10px] text-black font-bold" title="По умолчанию">↺</button>
+                    <button data-color="#4ade80" class="color-swatch-btn w-6 h-6 rounded-full border border-white/20" style="background:#4ade80"></button>
+                    <button data-color="#38bdf8" class="color-swatch-btn w-6 h-6 rounded-full border border-white/20" style="background:#38bdf8"></button>
+                    <button data-color="#a855f7" class="color-swatch-btn w-6 h-6 rounded-full border border-white/20" style="background:#a855f7"></button>
+                    <button data-color="#f43f5e" class="color-swatch-btn w-6 h-6 rounded-full border border-white/20" style="background:#f43f5e"></button>
+                    <button data-color="#f59e0b" class="color-swatch-btn w-6 h-6 rounded-full border border-white/20" style="background:#f59e0b"></button>
+                    <button data-color="#ec4899" class="color-swatch-btn w-6 h-6 rounded-full border border-white/20" style="background:#ec4899"></button>
+                </div>
+            </div>
+
+            <!-- Время до исчезновения полужидкой капли графа -->
+            <div class="pill-element px-5 py-3.5 flex flex-col gap-1.5">
+                <div class="flex items-center justify-between text-[13px] font-medium">
+                    <span>Исчезновение капли графа</span>
+                    <span id="dropHideTimeLabel" class="text-emerald-400 font-bold">2.5 сек</span>
+                </div>
+                <input id="dropHideTimeSlider" type="range" min="1.0" max="8.0" step="0.5" value="2.5" class="speed-slider" />
+                <div class="flex justify-between text-[10px] text-neutral-400">
+                    <span>Быстро (1 сек)</span>
+                    <span>2.5 сек</span>
+                    <span>Долго (8 сек)</span>
+                </div>
+            </div>
+
+            <!-- Настройка скорости движения подсветки в навбаре -->
+            <div class="pill-element px-5 py-3.5 flex flex-col gap-1.5">
+                <div class="flex items-center justify-between text-[13px] font-medium">
+                    <span>Скорость анимации панели</span>
+                    <span id="navSpeedLabel" class="text-emerald-400 font-bold">180 мс</span>
+                </div>
+                <input id="navSpeedSlider" type="range" min="60" max="500" step="10" value="180" class="speed-slider" />
+            </div>
+
+            <!-- Управление памятью: выгрузка/загрузка файла .json и сброс -->
+            <div class="flex items-center gap-2 pt-0.5">
+                <button id="exportJsonBtn" class="pill-element flex-1 py-2.5 px-4 flex items-center justify-center gap-2 text-xs font-semibold hover:border-emerald-400/50">
+                    <span>💾</span>
+                    <span>Скачать (.json)</span>
+                </button>
+                <button id="importJsonBtn" class="pill-element flex-1 py-2.5 px-4 flex items-center justify-center gap-2 text-xs font-semibold hover:border-emerald-400/50">
+                    <span>📂</span>
+                    <span>Загрузить</span>
+                </button>
+                <input id="importFileInput" type="file" accept=".json,application/json" class="hidden" />
+            </div>
+
+            <button id="resetMemoryBtn" class="pill-element w-full py-2.5 px-5 text-xs font-semibold text-red-400 hover:bg-red-500/10 text-center">
+                Сбросить память к начальным заметкам
+            </button>
+        </div>
+    </div>
+
+    <!-- Нижняя панель навигации с быстрым перетеканием активного индикатора -->
+    <div id="navbarContainer" class="pill-element relative h-[74px] px-4 mb-2 flex items-center justify-between flex-shrink-0 z-30 shadow-lg overflow-hidden">
+        <!-- Плавная капля подсветки -->
+        <div id="liquidIndicator" class="liquid-indicator"></div>
+
+        <!-- Заметки -->
+        <button class="nav-icon-btn" data-tab="notes" title="Заметки">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">
+                <rect x="5" y="3" width="14" height="18" rx="2"></rect>
+                <line x1="9" y1="7" x2="15" y2="7"></line>
+                <line x1="9" y1="11" x2="15" y2="11"></line>
+                <line x1="9" y1="15" x2="13" y2="15"></line>
+            </svg>
+        </button>
+
+        <!-- Статистика -->
+        <button class="nav-icon-btn" data-tab="stats" title="Аналитика">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="18" rx="3"></rect>
+                <line x1="8" y1="16" x2="8" y2="11"></line>
+                <line x1="12" y1="16" x2="12" y2="8"></line>
+                <line x1="16" y1="16" x2="16" y2="13"></line>
+            </svg>
+        </button>
+
+        <!-- Центральная кнопка Графа (живая 3D-иконка, меняющая ракурс при каждом нажатии) -->
+        <button id="centerGraphBtn" class="nav-icon-btn active" data-tab="graph" title="Повернуть 3D-ракурс графа">
+            <svg id="centerGraphSvg" class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                <!-- Генерируется динамически в 3D при каждом клике -->
+            </svg>
+        </button>
+
+        <!-- Тренды -->
+        <button class="nav-icon-btn" data-tab="trends" title="Прогресс">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="18" rx="3"></rect>
+                <polyline points="7 14 11 10 14 13 17 9"></polyline>
+                <polyline points="14 9 17 9 17 12"></polyline>
+            </svg>
+        </button>
+
+        <!-- Настройки -->
+        <button class="nav-icon-btn" data-tab="settings" title="Настройки">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Нижний индикатор полоски Home iOS/Android -->
+    <div class="w-32 h-1 bg-white/80 rounded-full mx-auto mt-0.5"></div>
+
+    <!-- Всплывающее уведомление (Тост) -->
+    <div id="toastBox" class="pointer-events-none fixed top-16 left-1/2 -translate-x-1/2 bg-neutral-900/95 border border-white/15 text-white text-xs font-medium px-4 py-2 rounded-full shadow-xl opacity-0 transition-opacity duration-200 z-50">
+        Действие выполнено
+    </div>
+</div>
+
+<script>
+    // --- 1. ПАМЯТЬ OFFLOAD (АВТОСОХРАНЕНИЕ В БРАУЗЕРЕ + ЭКСПОРТ/ИМПОРТ В ФАЙЛ) ---
+    const STORAGE_KEY = 'offload_memory_v1';
+
+    const defaultNotes = [
+        {
+            id: 1,
+            icon: '📝',
+            text: 'Заметка: Обезжирить стол перед печатью #3d #школа',
+            completed: false,
+            color: '#38bdf8'
+        },
+        {
+            id: 2,
+            icon: '🎯',
+            text: 'Эмоция: Бодряк (активность на уроке) #школа',
+            completed: false,
+            color: ''
+        }
+    ];
+
+    let notes = [...defaultNotes];
+    let navSpeedMs = 180;
+    let nodeSizeMultiplier = 1.0; // Множитель ширины нод и связей
+    let dropAutoHideSec = 2.5;    // Через сколько секунд исчезает полужидкая капля графа
+    let dropHideTimeout = null;
+    let activeTagFilter = null;
+    let searchQuery = '';
+
+    // Загрузка памяти при старте
+    function loadMemory() {
+        try {
+            const raw = window.localStorage.getItem(STORAGE_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed.notes)) {
+                notes = parsed.notes;
+            }
+            if (typeof parsed.navSpeedMs === 'number') {
+                navSpeedMs = Math.min(500, Math.max(60, parsed.navSpeedMs));
+            }
+            if (typeof parsed.nodeSizeMultiplier === 'number') {
+                nodeSizeMultiplier = Math.min(2.2, Math.max(0.5, parsed.nodeSizeMultiplier));
+            }
+            if (typeof parsed.dropAutoHideSec === 'number') {
+                dropAutoHideSec = Math.min(8.0, Math.max(1.0, parsed.dropAutoHideSec));
+            }
+            if (parsed.lightMode === true) {
+                document.body.classList.add('light-mode');
+            }
+        } catch (err) {
+            console.warn('Не удалось прочитать память offload:', err);
+        }
+    }
+
+    // Сохранение всех заметок, темы и настроек
+    function saveMemory() {
+        try {
+            const payload = {
+                app: 'offload',
+                updatedAt: new Date().toISOString(),
+                notes: notes,
+                navSpeedMs: navSpeedMs,
+                nodeSizeMultiplier: nodeSizeMultiplier,
+                dropAutoHideSec: dropAutoHideSec,
+                lightMode: document.body.classList.contains('light-mode')
+            };
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        } catch (err) {
+            console.warn('Не удалось сохранить память offload:', err);
+        }
+    }
+
+    function applyNavSpeed(ms) {
+        navSpeedMs = Math.min(500, Math.max(60, Number(ms) || 180));
+        document.documentElement.style.setProperty('--nav-speed', `${navSpeedMs}ms`);
+        const slider = document.getElementById('navSpeedSlider');
+        const label = document.getElementById('navSpeedLabel');
+        if (slider) slider.value = String(navSpeedMs);
+        if (label) label.textContent = `${navSpeedMs} мс`;
+        saveMemory();
+    }
+
+    function applyNodeScale(scaleVal, triggerDrop = false) {
+        nodeSizeMultiplier = Math.min(2.2, Math.max(0.5, Number(scaleVal) || 1.0));
+        const slider = document.getElementById('nodeScaleSlider');
+        const label = document.getElementById('nodeScaleLabel');
+        if (slider) slider.value = String(nodeSizeMultiplier);
+        if (label) label.textContent = `${nodeSizeMultiplier.toFixed(1)}x`;
+        saveMemory();
+        if (triggerDrop) showLiquidDropPreview();
+    }
+
+    function applyDropHideTime(secVal, triggerDrop = false) {
+        dropAutoHideSec = Math.min(8.0, Math.max(1.0, Number(secVal) || 2.5));
+        const slider = document.getElementById('dropHideTimeSlider');
+        const label = document.getElementById('dropHideTimeLabel');
+        if (slider) slider.value = String(dropAutoHideSec);
+        if (label) label.textContent = `${dropAutoHideSec.toFixed(1)} сек`;
+        saveMemory();
+        if (triggerDrop) showLiquidDropPreview();
+    }
+
+    // Показ полужидкой капли графа сверху экрана в настройках и её авто-исчезновение
+    function showLiquidDropPreview() {
+        const gc = document.getElementById('graphContainer');
+        if (!gc || !gc.classList.contains('liquid-drop-mode')) return;
+        gc.classList.add('drop-visible');
+        resizeCanvas();
+        pulseGraph();
+        clearTimeout(dropHideTimeout);
+        dropHideTimeout = setTimeout(() => {
+            gc.classList.remove('drop-visible');
+        }, dropAutoHideSec * 1000);
+    }
+
+    // Обновление выпадающего списка заметок для покраски конкретной ноды
+    function updateNoteColorSelect() {
+        const sel = document.getElementById('noteColorSelect');
+        if (!sel) return;
+        const prevVal = sel.value;
+        sel.innerHTML = '';
+        notes.forEach(n => {
+            const opt = document.createElement('option');
+            opt.value = String(n.id);
+            const clean = n.text.replace(/^(Заметка|Эмоция|Идея):\s*/i, '').slice(0, 34);
+            opt.textContent = `${n.icon} ${clean}`;
+            sel.appendChild(opt);
+        });
+        if (prevVal && notes.some(n => String(n.id) === prevVal)) {
+            sel.value = prevVal;
+        }
+    }
+
+    // --- 2. 3D-ИКОНКА ГРАФА В НАВБАРЕ (ПРОВОРАЧИВАЕТСЯ В 3D И МЕНЯЕТ СВОЙ ВИД ПРИ КАЖДОМ НАЖАТИИ) ---
+    const centerGraphSvg = document.getElementById('centerGraphSvg');
+    const icon3DVertices = [
+        { x: 0, y: 0, z: 0, r: 2.35 },       // Центральное ядро
+        { x: -6.2, y: -5.8, z: 3.2, r: 1.95 },
+        { x: 6.4, y: -4.8, z: -2.8, r: 1.95 },
+        { x: -5.5, y: 5.8, z: -3.4, r: 1.95 },
+        { x: 5.2, y: 5.6, z: 3.8, r: 1.95 },
+        { x: 0.5, y: -7.2, z: -5.2, r: 1.65 }
+    ];
+    const icon3DEdges = [
+        [0, 1], [0, 2], [0, 3], [0, 4], [0, 5],
+        [1, 5], [2, 4], [1, 3]
+    ];
+
+    let iconYaw = 0.25;
+    let iconPitch = 0.2;
+    let iconRoll = 0.0;
+    let iconAnimFrame = null;
+
+    function renderCenterGraphIcon3D(yaw, pitch, roll) {
+        if (!centerGraphSvg) return;
+        const cy = Math.cos(yaw), sy = Math.sin(yaw);
+        const cp = Math.cos(pitch), sp = Math.sin(pitch);
+        const cr = Math.cos(roll), sr = Math.sin(roll);
+
+        const projected = icon3DVertices.map((v, idx) => {
+            // Вращение по Y (yaw)
+            let x1 = v.x * cy + v.z * sy;
+            let z1 = -v.x * sy + v.z * cy;
+            let y1 = v.y;
+
+            // Вращение по X (pitch)
+            let y2 = y1 * cp - z1 * sp;
+            let z2 = y1 * sp + z1 * cp;
+            let x2 = x1;
+
+            // Вращение по Z (roll)
+            let x3 = x2 * cr - y2 * sr;
+            let y3 = x2 * sr + y2 * cr;
+            let z3 = z2;
+
+            const perspective = 26 / (26 - z3);
+            return {
+                idx,
+                sx: (12 + x3 * perspective).toFixed(2),
+                sy: (12 + y3 * perspective).toFixed(2),
+                sz: z3,
+                r: Math.max(1.3, v.r * perspective * 0.92).toFixed(2)
+            };
+        });
+
+        let svgHtml = '';
+        // Сначала рисуем рёбра
+        icon3DEdges.forEach(([a, b]) => {
+            const p1 = projected[a];
+            const p2 = projected[b];
+            const avgZ = (p1.sz + p2.sz) / 2;
+            const opacity = Math.max(0.35, Math.min(1, (avgZ + 8) / 13)).toFixed(2);
+            svgHtml += `<line x1="${p1.sx}" y1="${p1.sy}" x2="${p2.sx}" y2="${p2.sy}" stroke="currentColor" stroke-opacity="${opacity}" stroke-width="1.85" />`;
+        });
+
+        // Затем рисуем вершины, отсортированные по глубине Z
+        [...projected].sort((a, b) => a.sz - b.sz).forEach(p => {
+            const opacity = Math.max(0.45, Math.min(1, (p.sz + 8) / 12)).toFixed(2);
+            svgHtml += `<circle cx="${p.sx}" cy="${p.sy}" r="${p.r}" fill="currentColor" fill-opacity="${opacity}" stroke="none" />`;
+        });
+
+        centerGraphSvg.innerHTML = svgHtml;
+    }
+
+    function spinCenterGraphIcon3D() {
+        if (iconAnimFrame) cancelAnimationFrame(iconAnimFrame);
+
+        const startYaw = iconYaw;
+        const startPitch = iconPitch;
+        const startRoll = iconRoll;
+
+        // Каждый клик поворачивает 3D-структуру иконки в новый уникальный ракурс
+        const deltaYaw = 1.15 + Math.random() * 0.9;
+        const deltaPitch = (Math.random() > 0.5 ? 1 : -1) * (0.75 + Math.random() * 0.6);
+        const deltaRoll = (Math.random() - 0.5) * 0.85;
+
+        const duration = 420;
+        const startTime = performance.now();
+
+        function step(now) {
+            const t = Math.min(1, (now - startTime) / duration);
+            // Плавный easeOutBack/Cubic
+            const ease = 1 - Math.pow(1 - t, 3);
+
+            iconYaw = startYaw + deltaYaw * ease;
+            iconPitch = startPitch + deltaPitch * ease;
+            iconRoll = startRoll + deltaRoll * ease;
+
+            renderCenterGraphIcon3D(iconYaw, iconPitch, iconRoll);
+
+            if (t < 1) {
+                iconAnimFrame = requestAnimationFrame(step);
+            }
+        }
+        iconAnimFrame = requestAnimationFrame(step);
+    }
+
+    // Извлекаем все #хэштеги из текста заметки (в нижнем регистре)
+    function extractHashtags(text) {
+        const matches = text.match(/#[a-zA-Zа-яА-ЯёЁ0-9_]+/g);
+        return matches ? matches.map(t => t.toLowerCase()) : [];
+    }
+
+    // Короткая подпись для узла в 3D-графе
+    function getNodeLabel(note) {
+        const tags = extractHashtags(note.text);
+        const cleanText = note.text
+            .replace(/^(Заметка|Эмоция|Идея):\s*/i, '')
+            .replace(/#[a-zA-Zа-яА-ЯёЁ0-9_]+/g, '')
+            .trim();
+        const shortWords = cleanText.split(/\s+/).slice(0, 2).join(' ');
+        if (tags.length > 0) {
+            return `${shortWords || 'Мысль'} (${tags.join(' ')})`;
+        }
+        return shortWords || 'Мысль';
+    }
+
+    // --- 2. 3D СФЕРА ГРАФА (ВРАЩЕНИЕ ВО ВСЕ СТОРОНЫ + СВЯЗИ ПО #ХЭШТЕГАМ) ---
+    const canvas = document.getElementById('graphCanvas');
+    const ctx = canvas.getContext('2d');
+    const graphCountLabel = document.getElementById('graphCountLabel');
+    let width = 0, height = 0;
+
+    let sphereNodes = [];
+    let sphereLinks = [];
+
+    // Матрица ориентации 3D-шара (позволяет крутить шар на 360° в любую сторону без блокировки полюсов)
+    let rotMatrix = [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1]
+    ];
+
+    // Инерция вращения шара
+    let velYaw = 0.0035;
+    let velPitch = 0.0012;
+    let isDraggingSphere = false;
+    let lastPointerPos = { x: 0, y: 0 };
+    let pointerDownPos = { x: 0, y: 0 };
+    let hoveredNode = null;
+
+    function rotateMatrix(yaw, pitch) {
+        const cy = Math.cos(yaw), sy = Math.sin(yaw);
+        const cp = Math.cos(pitch), sp = Math.sin(pitch);
+
+        // Поворот вокруг экранных осей Y (влево-вправо) и X (вверх-вниз)
+        const R = [
+            [cy, sy * sp, sy * cp],
+            [0, cp, -sp],
+            [-sy, cy * sp, cy * cp]
+        ];
+
+        const next = [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0]
+        ];
+
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                next[i][j] = R[i][0] * rotMatrix[0][j] + R[i][1] * rotMatrix[1][j] + R[i][2] * rotMatrix[2][j];
+            }
+        }
+        rotMatrix = next;
+    }
+
+    // Пересборка узлов и связей строго из текущих заметок пользователя
+    function syncGraphWithNotes() {
+        const count = notes.length;
+        graphCountLabel.textContent = count === 0 ? 'нет узлов' : `${count} ${count === 1 ? 'узел' : (count < 5 ? 'узла' : 'узлов')}`;
+
+        // Равномерно распределяем заметки по поверхности 3D-шара (алгоритм сферы Фибоначчи)
+        const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+
+        sphereNodes = notes.map((note, idx) => {
+            let x, y, z;
+            if (count === 1) {
+                x = 0; y = 0; z = 0;
+            } else if (count === 2) {
+                x = idx === 0 ? -0.55 : 0.55;
+                y = idx === 0 ? -0.2 : 0.2;
+                z = 0;
+            } else {
+                y = 1 - (idx / (count - 1)) * 2;
+                const radiusAtY = Math.sqrt(Math.max(0, 1 - y * y));
+                const theta = goldenAngle * idx;
+                x = Math.cos(theta) * radiusAtY;
+                z = Math.sin(theta) * radiusAtY;
+            }
+
+            const tags = extractHashtags(note.text);
+            return {
+                noteId: note.id,
+                icon: note.icon,
+                label: getNodeLabel(note),
+                tags: tags,
+                customColor: note.color || '',
+                bx: x,
+                by: y,
+                bz: z,
+                sx: 0,
+                sy: 0,
+                sz: 0,
+                scale: 1,
+                r: tags.length > 0 ? 9.5 : 8
+            };
+        });
+
+        // Соединяем нитями те заметки, у которых есть хотя бы один одинаковый #хэштег
+        sphereLinks = [];
+        for (let i = 0; i < sphereNodes.length; i++) {
+            for (let j = i + 1; j < sphereNodes.length; j++) {
+                const n1 = sphereNodes[i];
+                const n2 = sphereNodes[j];
+                const sharedTags = n1.tags.filter(tag => n2.tags.includes(tag));
+                if (sharedTags.length > 0) {
+                    sphereLinks.push({
+                        source: n1,
+                        target: n2,
+                        sharedTags: sharedTags
+                    });
+                }
+            }
+        }
+    }
+
+    function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        width = rect.width;
+        height = rect.height;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    // Наблюдатель размера контейнера, чтобы при развороте графа холст никогда не растягивался и не кривился
+    const resizeObserver = new ResizeObserver(() => {
+        resizeCanvas();
+    });
+    resizeObserver.observe(document.getElementById('graphContainer'));
+
+    function drawGraph() {
+        ctx.clearRect(0, 0, width, height);
+
+        const isLight = document.body.classList.contains('light-mode');
+        const cx = width / 2;
+        const cy = height / 2;
+        const sphereRadius = Math.min(width, height) * 0.34;
+        const fov = 340;
+
+        // Плавное вращение по инерции, когда пользователь отпустил палец/мышь
+        if (!isDraggingSphere) {
+            rotateMatrix(velYaw, velPitch);
+            velYaw *= 0.96;
+            velPitch *= 0.96;
+            // Поддерживаем лёгкое живое вращение сферы
+            if (Math.hypot(velYaw, velPitch) < 0.0022) {
+                velYaw += (0.0022 - velYaw) * 0.05;
+            }
+        }
+
+        // Рисуем тонкий контур 3D-сферы (меридианы/экватор) для ощущения объёмного шара
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, sphereRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = isLight ? 'rgba(15, 23, 42, 0.07)' : 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+
+        // Вычисляем 3D-координаты каждого узла
+        sphereNodes.forEach(n => {
+            const rx = rotMatrix[0][0] * n.bx + rotMatrix[0][1] * n.by + rotMatrix[0][2] * n.bz;
+            const ry = rotMatrix[1][0] * n.bx + rotMatrix[1][1] * n.by + rotMatrix[1][2] * n.bz;
+            const rz = rotMatrix[2][0] * n.bx + rotMatrix[2][1] * n.by + rotMatrix[2][2] * n.bz;
+
+            const depth = rz * sphereRadius;
+            const perspective = fov / (fov - depth);
+
+            n.sx = cx + rx * sphereRadius * perspective;
+            n.sy = cy + ry * sphereRadius * perspective;
+            n.sz = rz;
+            n.scale = perspective;
+        });
+
+        // 1. Отрисовка тонких нитей между заметками с одинаковым #хэштегом
+        sphereLinks.forEach(link => {
+            const s = link.source;
+            const t = link.target;
+
+            const isHighlighted = activeTagFilter && link.sharedTags.includes(activeTagFilter);
+            const avgZ = (s.sz + t.sz) / 2;
+            const alpha = Math.max(0.18, Math.min(0.85, (avgZ + 1.2) / 2.2));
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(s.sx, s.sy);
+            ctx.lineTo(t.sx, t.sy);
+
+            ctx.lineWidth = (isHighlighted ? 2.0 : 1.35) * (0.65 + nodeSizeMultiplier * 0.35);
+            if (isHighlighted) {
+                ctx.strokeStyle = isLight ? `rgba(16, 185, 129, ${alpha})` : `rgba(74, 222, 128, ${alpha})`;
+            } else {
+                ctx.strokeStyle = isLight ? `rgba(71, 85, 105, ${alpha * 0.75})` : `rgba(212, 212, 216, ${alpha * 0.65})`;
+            }
+            ctx.stroke();
+
+            // Подпись общего #хэштега посередине связи
+            const midX = (s.sx + t.sx) / 2;
+            const midY = (s.sy + t.sy) / 2;
+            ctx.font = '500 10.5px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = isLight ? `rgba(16, 185, 129, ${alpha})` : `rgba(74, 222, 128, ${alpha * 0.95})`;
+            ctx.fillText(link.sharedTags.join(' '), midX, midY - 6);
+            ctx.restore();
+        });
+
+        // 2. Сортируем узлы по глубине Z (дальние рисуются первыми, ближние поверх)
+        const sortedNodes = [...sphereNodes].sort((a, b) => a.sz - b.sz);
+        const isCompactDrop = document.getElementById('graphContainer').classList.contains('liquid-drop-mode');
+
+        sortedNodes.forEach(n => {
+            const isSelected = activeTagFilter && n.tags.includes(activeTagFilter);
+            const isHovered = hoveredNode === n;
+            const radius = Math.max(3.5, n.r * nodeSizeMultiplier * n.scale * (isSelected || isHovered ? 1.2 : 1));
+            const depthAlpha = Math.max(0.3, Math.min(1, (n.sz + 1.3) / 2.1));
+
+            ctx.save();
+            ctx.globalAlpha = depthAlpha;
+            ctx.beginPath();
+            ctx.arc(n.sx, n.sy, radius, 0, Math.PI * 2);
+
+            if (isSelected) {
+                ctx.fillStyle = '#4ade80';
+                ctx.shadowColor = 'rgba(74, 222, 128, 0.85)';
+                ctx.shadowBlur = 12;
+            } else if (n.customColor) {
+                ctx.fillStyle = n.customColor;
+                ctx.shadowColor = n.customColor;
+                ctx.shadowBlur = 10;
+            } else {
+                ctx.fillStyle = isLight ? '#334155' : '#e4e4e7';
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                ctx.shadowBlur = 6;
+            }
+
+            ctx.fill();
+            ctx.lineWidth = 1.3;
+            ctx.strokeStyle = isLight ? '#ffffff' : '#181a1f';
+            ctx.stroke();
+
+            // Подпись заметки и её #хэштегов под точкой
+            const fontSize = Math.round((isCompactDrop ? 9.5 : 11.5) * Math.max(0.85, n.scale));
+            ctx.font = `${n.sz > 0 ? '600' : '500'} ${fontSize}px Inter, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            const textY = n.sy + radius + 4;
+
+            ctx.fillStyle = isLight ? 'rgba(255,255,255,0.8)' : 'rgba(24, 26, 31, 0.8)';
+            ctx.fillText(n.label, n.sx + 1, textY + 1);
+
+            ctx.fillStyle = isSelected ? '#4ade80' : (n.customColor ? n.customColor : (isLight ? '#0f172a' : '#f4f4f5'));
+            ctx.fillText(n.label, n.sx, textY);
+            ctx.restore();
+        });
+
+        requestAnimationFrame(drawGraph);
+    }
+
+    // --- 3. ВЗАИМОДЕЙСТВИЕ С 3D-ШАРОМ (ВРАЩЕНИЕ ВО ВСЕ СТОРОНЫ И КЛИКИ ПО УЗЛАМ) ---
+    function getPointerCoords(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+            x: clientX - rect.left,
+            y: clientY - rect.top
+        };
+    }
+
+    function findNodeAt(x, y) {
+        // Ищем сначала среди ближних к зрителю узлов
+        const sorted = [...sphereNodes].sort((a, b) => b.sz - a.sz);
+        for (const n of sorted) {
+            const dist = Math.hypot(x - n.sx, y - n.sy);
+            if (dist <= n.r * n.scale + 10) return n;
+        }
+        return null;
+    }
+
+    canvas.addEventListener('pointerdown', e => {
+        const pos = getPointerCoords(e);
+        isDraggingSphere = true;
+        lastPointerPos = pos;
+        pointerDownPos = pos;
+        canvas.setPointerCapture(e.pointerId);
+    });
+
+    canvas.addEventListener('pointermove', e => {
+        const pos = getPointerCoords(e);
+        if (isDraggingSphere) {
+            const dx = pos.x - lastPointerPos.x;
+            const dy = pos.y - lastPointerPos.y;
+            lastPointerPos = pos;
+
+            // Вращаем 3D-сферу в точности за пальцем/мышью в любую сторону
+            velYaw = dx * 0.0085;
+            velPitch = -dy * 0.0085;
+            rotateMatrix(velYaw, velPitch);
+        } else {
+            hoveredNode = findNodeAt(pos.x, pos.y);
+        }
+    });
+
+    canvas.addEventListener('pointerup', e => {
+        const pos = getPointerCoords(e);
+        const moveDist = Math.hypot(pos.x - pointerDownPos.x, pos.y - pointerDownPos.y);
+        isDraggingSphere = false;
+
+        // Если это был короткий тап/клик, а не вращение шара
+        if (moveDist < 7) {
+            const hit = findNodeAt(pos.x, pos.y);
+            if (hit && hit.tags.length > 0) {
+                const tag = hit.tags[0];
+                setTagFilter(activeTagFilter === tag ? null : tag);
+            } else if (hit) {
+                showToast('Добавьте #хэштег в заметку для связи');
+            }
+        }
+    });
+
+    function pulseGraph() {
+        velYaw = (Math.random() > 0.5 ? 1 : -1) * 0.045;
+        velPitch = (Math.random() - 0.5) * 0.035;
+    }
+
+    // --- 4. ОТРИСОВКА И УПРАВЛЕНИЕ ЗАМЕТКАМИ ---
+    const notesListEl = document.getElementById('notesList');
+    const nodeBadge = document.getElementById('nodeBadge');
+    const nodeBadgeText = document.getElementById('nodeBadgeText');
+    const resetFilterBtn = document.getElementById('resetFilterBtn');
+
+    function setTagFilter(tag) {
+        activeTagFilter = tag;
+        if (tag) {
+            nodeBadge.classList.remove('hidden');
+            nodeBadgeText.textContent = tag;
+            resetFilterBtn.classList.remove('hidden');
+        } else {
+            nodeBadge.classList.add('hidden');
+            resetFilterBtn.classList.add('hidden');
+        }
+        renderNotes();
+    }
+
+    resetFilterBtn.addEventListener('click', () => setTagFilter(null));
+
+    function renderNotes() {
+        notesListEl.innerHTML = '';
+
+        const filtered = notes.filter(item => {
+            const matchesSearch = item.text.toLowerCase().includes(searchQuery.toLowerCase());
+            const itemTags = extractHashtags(item.text);
+            const matchesTag = !activeTagFilter || itemTags.includes(activeTagFilter.toLowerCase());
+            return matchesSearch && matchesTag;
+        });
+
+        if (filtered.length === 0) {
+            const emptyEl = document.createElement('div');
+            emptyEl.className = 'pill-element px-5 py-3.5 text-center text-sm text-neutral-400';
+            emptyEl.textContent = 'Заметок пока нет. Напишите мысль с #хэштегом снизу!';
+            notesListEl.appendChild(emptyEl);
+            return;
+        }
+
+        filtered.forEach(note => {
+            const card = document.createElement('div');
+            card.className = `pill-element px-5 py-3 flex items-center justify-between gap-3 cursor-pointer ${note.completed ? 'opacity-55' : ''}`;
+            
+            const content = document.createElement('div');
+            content.className = 'text-[15px] leading-snug font-medium flex-1';
+            if (note.completed) {
+                content.classList.add('line-through');
+            }
+            content.textContent = `${note.icon} ${note.text}`;
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'text-neutral-500 hover:text-red-400 text-xs px-1.5 py-1 rounded-full transition';
+            deleteBtn.innerHTML = '✕';
+            deleteBtn.title = 'Удалить';
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                notes = notes.filter(n => n.id !== note.id);
+                saveMemory();
+                syncGraphWithNotes();
+                updateNoteColorSelect();
+                renderNotes();
+                showToast('Заметка удалена из памяти');
+            });
+
+            card.addEventListener('click', () => {
+                note.completed = !note.completed;
+                saveMemory();
+                renderNotes();
+            });
+
+            if (note.color) {
+                const colorDot = document.createElement('span');
+                colorDot.className = 'w-2.5 h-2.5 rounded-full flex-shrink-0';
+                colorDot.style.backgroundColor = note.color;
+                colorDot.style.boxShadow = `0 0 8px ${note.color}`;
+                card.appendChild(colorDot);
+            }
+
+            card.appendChild(content);
+            card.appendChild(deleteBtn);
+            notesListEl.appendChild(card);
+        });
+    }
+
+    // --- 5. ДОБАВЛЕНИЕ НОВОЙ ЗАМЕТКИ И АВТО-СОЕДИНЕНИЕ ПО #ХЭШТЕГУ ---
+    const thoughtInput = document.getElementById('thoughtInput');
+    const addThoughtBtn = document.getElementById('addThoughtBtn');
+    const voiceBtn = document.getElementById('voiceBtn');
+
+    function addNewThought() {
+        const val = thoughtInput.value.trim();
+        if (!val) {
+            thoughtInput.focus();
+            return;
+        }
+
+        const isEmotion = val.toLowerCase().includes('эмоц') || val.toLowerCase().includes('настро');
+        const newNote = {
+            id: Date.now(),
+            icon: isEmotion ? '🎯' : '📝',
+            text: val,
+            completed: false,
+            color: ''
+        };
+
+        const newTags = extractHashtags(val);
+        const connectedCount = notes.filter(existing => {
+            const exTags = extractHashtags(existing.text);
+            return newTags.some(t => exTags.includes(t));
+        }).length;
+
+        notes.unshift(newNote);
+        thoughtInput.value = '';
+        saveMemory();
+        syncGraphWithNotes();
+        updateNoteColorSelect();
+        renderNotes();
+        pulseGraph();
+
+        if (connectedCount > 0) {
+            showToast(`Сохранено • Связь (${newTags.join(' ')})`);
+        } else {
+            showToast('Сохранено в память offload');
+        }
+    }
+
+    addThoughtBtn.addEventListener('click', addNewThought);
+    thoughtInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') addNewThought();
+    });
+
+    if (voiceBtn) {
+        voiceBtn.addEventListener('click', () => {
+            voiceBtn.classList.toggle('recording-mic');
+            if (voiceBtn.classList.contains('recording-mic')) {
+                showToast('Слушаю... (нажмите ещё раз для вставки)');
+            } else {
+                thoughtInput.value = 'Идея: Автоматизировать полив на окне #дом #3d';
+                thoughtInput.focus();
+                showToast('Голос распознан');
+            }
+        });
+    }
+
+    // --- 6. АНИМАЦИЯ НАВБАРА, 3D-ПОВОРОТ ЦЕНТРАЛЬНОЙ ИКОНКИ И НАСТРОЙКИ ---
+    const navbarContainer = document.getElementById('navbarContainer');
+    const liquidIndicator = document.getElementById('liquidIndicator');
+    const navButtons = document.querySelectorAll('.nav-icon-btn');
+    const mainContentArea = document.getElementById('mainContentArea');
+    const wipPlaceholder = document.getElementById('wipPlaceholder');
+    const wipSectionName = document.getElementById('wipSectionName');
+    const settingsArea = document.getElementById('settingsArea');
+
+    const tabNames = {
+        notes: 'Заметки',
+        stats: 'Раздел «Аналитика» в разработке',
+        graph: 'Граф',
+        trends: 'Раздел «Динамика» в разработке',
+        settings: 'Настройки'
+    };
+
+    function setActiveNavButton(btn) {
+        navButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        if (liquidIndicator && btn) {
+            liquidIndicator.style.width = btn.offsetWidth + 'px';
+            liquidIndicator.style.transform = `translate(${btn.offsetLeft}px, -50%)`;
+        }
+    }
+
+    navButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            setActiveNavButton(btn);
+            const tab = btn.dataset.tab;
+            const gc = document.getElementById('graphContainer');
+            const expBtn = document.getElementById('expandGraphBtn');
+
+            // Если нажата центральная кнопка графа — проворачиваем её в 3D и меняем ракурс самого 3D-шара
+            if (tab === 'graph') {
+                spinCenterGraphIcon3D();
+                pulseGraph();
+            }
+
+            if (tab === 'settings') {
+                // В настройках убираем основной граф и переводим его в режим всплывающей полужидкой капли
+                gc.classList.remove('expanded', 'drop-visible');
+                gc.classList.add('liquid-drop-mode');
+                expBtn.classList.add('hidden');
+                clearTimeout(dropHideTimeout);
+
+                mainContentArea.classList.add('hidden');
+                wipPlaceholder.classList.add('hidden');
+                settingsArea.classList.remove('hidden');
+                updateNoteColorSelect();
+                setTimeout(resizeCanvas, 50);
+            } else {
+                // Возвращаем обычный граф на главном экране
+                clearTimeout(dropHideTimeout);
+                gc.classList.remove('liquid-drop-mode', 'drop-visible');
+                expBtn.classList.remove('hidden');
+                setTimeout(resizeCanvas, 50);
+
+                if (tab === 'notes' || tab === 'graph') {
+                    wipPlaceholder.classList.add('hidden');
+                    settingsArea.classList.add('hidden');
+                    mainContentArea.classList.remove('hidden');
+                    if (tab === 'graph') {
+                        setTagFilter(null);
+                    }
+                } else {
+                    mainContentArea.classList.add('hidden');
+                    settingsArea.classList.add('hidden');
+                    wipPlaceholder.classList.remove('hidden');
+                    wipSectionName.textContent = tabNames[tab] || 'Раздел в разработке';
+                    showToast('Раздел в разработке');
+                }
+            }
+        });
+    });
+
+    // Обработчики настроек: ширина нод, цвет заметки, таймер капли, скорость панели и полноэкранный режим без строки
+    const navSpeedSlider = document.getElementById('navSpeedSlider');
+    navSpeedSlider.addEventListener('input', e => {
+        applyNavSpeed(e.target.value);
+    });
+
+    const nodeScaleSlider = document.getElementById('nodeScaleSlider');
+    nodeScaleSlider.addEventListener('input', e => {
+        applyNodeScale(e.target.value, true);
+    });
+
+    const dropHideTimeSlider = document.getElementById('dropHideTimeSlider');
+    dropHideTimeSlider.addEventListener('input', e => {
+        applyDropHideTime(e.target.value, true);
+    });
+
+    document.getElementById('previewDropManualBtn').addEventListener('click', () => {
+        showLiquidDropPreview();
+    });
+
+    document.querySelectorAll('.color-swatch-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const selectEl = document.getElementById('noteColorSelect');
+            const targetId = Number(selectEl.value);
+            const chosenColor = btn.dataset.color || '';
+            const targetNote = notes.find(n => n.id === targetId);
+            if (targetNote) {
+                targetNote.color = chosenColor;
+                saveMemory();
+                syncGraphWithNotes();
+                renderNotes();
+                showLiquidDropPreview();
+                showToast(chosenColor ? 'Цвет заметки обновлён' : 'Цвет сброшен');
+            }
+        });
+    });
+
+    // Кнопка запуска полноэкранного режима без браузерной строки
+    const fullscreenAppBtn = document.getElementById('fullscreenAppBtn');
+    fullscreenAppBtn.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().then(() => {
+                fullscreenAppBtn.textContent = 'Обычный вид';
+                showToast('Полноэкранный режим приложения');
+            }).catch(() => {
+                showToast('Добавьте на главный экран телефона для скрытия строки');
+            });
+        } else {
+            document.exitFullscreen();
+            fullscreenAppBtn.textContent = 'Во весь экран';
+        }
+    });
+
+    // Выгрузка заметок и настроек в локальный JSON-файл
+    document.getElementById('exportJsonBtn').addEventListener('click', () => {
+        const dataStr = JSON.stringify({
+            app: 'offload',
+            exportedAt: new Date().toISOString(),
+            navSpeedMs,
+            nodeSizeMultiplier,
+            dropAutoHideSec,
+            notes
+        }, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `offload-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast('Файл памяти offload сохранён');
+    });
+
+    // Загрузка заметок из JSON-файла
+    const importFileInput = document.getElementById('importFileInput');
+    document.getElementById('importJsonBtn').addEventListener('click', () => {
+        importFileInput.click();
+    });
+
+    importFileInput.addEventListener('change', e => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const parsed = JSON.parse(String(reader.result));
+                if (Array.isArray(parsed.notes)) {
+                    notes = parsed.notes;
+                    if (parsed.navSpeedMs) applyNavSpeed(parsed.navSpeedMs);
+                    if (parsed.nodeSizeMultiplier) applyNodeScale(parsed.nodeSizeMultiplier);
+                    if (parsed.dropAutoHideSec) applyDropHideTime(parsed.dropAutoHideSec);
+                    saveMemory();
+                    syncGraphWithNotes();
+                    updateNoteColorSelect();
+                    renderNotes();
+                    showLiquidDropPreview();
+                    showToast(`Загружено заметок: ${notes.length}`);
+                } else {
+                    showToast('Неверный формат файла');
+                }
+            } catch (err) {
+                showToast('Ошибка чтения файла');
+            }
+            importFileInput.value = '';
+        };
+        reader.readAsText(file);
+    });
+
+    // Сброс памяти к исходным заметкам
+    document.getElementById('resetMemoryBtn').addEventListener('click', () => {
+        notes = JSON.parse(JSON.stringify(defaultNotes));
+        setTagFilter(null);
+        saveMemory();
+        syncGraphWithNotes();
+        updateNoteColorSelect();
+        renderNotes();
+        showLiquidDropPreview();
+        showToast('Память сброшена к исходной');
+    });
+
+    // --- 7. ПОИСК, ТЕМА, ПОЛНОЭКРАННЫЙ ГРАФ ---
+    const searchInput = document.getElementById('searchInput');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+    searchInput.addEventListener('input', e => {
+        searchQuery = e.target.value;
+        clearSearchBtn.classList.toggle('hidden', !searchQuery);
+        renderNotes();
+    });
+
+    clearSearchBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        searchQuery = '';
+        clearSearchBtn.classList.add('hidden');
+        renderNotes();
+    });
+
+    document.getElementById('themeBtn').addEventListener('click', () => {
+        document.body.classList.toggle('light-mode');
+        const isLight = document.body.classList.contains('light-mode');
+        saveMemory();
+        showToast(isLight ? 'Светлая тема' : 'Тёмная тема');
+    });
+
+    const syncStatusBtn = document.getElementById('syncStatusBtn');
+    const greenCore = document.getElementById('greenCore');
+    syncStatusBtn.addEventListener('click', () => {
+        greenCore.classList.toggle('offline');
+        const isOffline = greenCore.classList.contains('offline');
+        showToast(isOffline ? 'Локальный режим (Офлайн)' : 'Синхронизация нейросети активна');
+        pulseGraph();
+    });
+
+    // Оптимизированный полноэкранный режим графа с сохранением пропорций и видимыми границами
+    const expandGraphBtn = document.getElementById('expandGraphBtn');
+    const graphContainer = document.getElementById('graphContainer');
+    const expandIcon = document.getElementById('expandIcon');
+
+    expandGraphBtn.addEventListener('click', () => {
+        const isExpanded = graphContainer.classList.toggle('expanded');
+        if (isExpanded) {
+            expandIcon.innerHTML = `
+                <polyline points="4 14 10 14 10 20"></polyline>
+                <polyline points="20 10 14 10 14 4"></polyline>
+                <line x1="14" y1="10" x2="21" y2="3"></line>
+                <line x1="3" y1="21" x2="10" y2="14"></line>
+            `;
+        } else {
+            expandIcon.innerHTML = `
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <polyline points="9 21 3 21 3 15"></polyline>
+                <line x1="21" y1="3" x2="14" y2="10"></line>
+                <line x1="3" y1="21" x2="10" y2="14"></line>
+            `;
+        }
+        resizeCanvas();
+        pulseGraph();
+    });
+
+    const toastBox = document.getElementById('toastBox');
+    let toastTimer = null;
+    function showToast(msg) {
+        toastBox.textContent = msg;
+        toastBox.style.opacity = '1';
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+            toastBox.style.opacity = '0';
+        }, 1800);
+    }
+
+    window.addEventListener('resize', () => {
+        resizeCanvas();
+        const activeBtn = document.querySelector('.nav-icon-btn.active');
+        if (activeBtn) setActiveNavButton(activeBtn);
+    });
+
+    window.onload = () => {
+        loadMemory();
+        applyNavSpeed(navSpeedMs);
+        applyNodeScale(nodeSizeMultiplier, false);
+        applyDropHideTime(dropAutoHideSec, false);
+        renderCenterGraphIcon3D(iconYaw, iconPitch, iconRoll);
+        resizeCanvas();
+        syncGraphWithNotes();
+        updateNoteColorSelect();
+        renderNotes();
+        const defaultActive = document.getElementById('centerGraphBtn');
+        setTimeout(() => setActiveNavButton(defaultActive), 10);
+        requestAnimationFrame(drawGraph);
+    };
+</script>
+</body>
+</html>

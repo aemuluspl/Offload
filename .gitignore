@@ -1,0 +1,27 @@
+# Flutter / Dart
+app/.dart_tool/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.idea/
+app/*.iml
+
+# Android
+app/android/.gradle/
+app/android/local.properties
+app/android/key.properties
+app/android/*.jks
+app/android/*.keystore
+app/android/app/debug/
+app/android/app/profile/
+app/android/app/release/
+*.apk
+*.aab
+
+# IDE / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Логи сборки
+build.log
