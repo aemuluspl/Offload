@@ -7,6 +7,8 @@ import 'package:flutter/scheduler.dart';
 import '../models/note.dart';
 import '../theme/offload_theme.dart';
 
+/// Плоский граф заметок в духе Obsidian: узлы расталкиваются, связи
+/// притягивают, а кнопка воспроизведения показывает историю создания заметок.
 class GraphOrb extends StatefulWidget {
   const GraphOrb({
     super.key,
@@ -41,29 +43,67 @@ class _GraphOrbState extends State<GraphOrb>
     with SingleTickerProviderStateMixin {
   late final Ticker _ticker;
   Duration _lastTick = Duration.zero;
-
-  double _yaw = 0.32;
-  double _pitch = 0.16;
-  double _velocityYaw = 0.16;
-  double _velocityPitch = 0.028;
-  bool _dragging = false;
+  Duration _clock = Duration.zero;
 
   Size _canvasSize = Size.zero;
-  GraphScene _scene = GraphScene.empty;
-  Offset? _lastDragPosition;
+  final List<GraphNode> _nodes = [];
+  final List<GraphLink> _links = [];
+  final List<GraphNode> _chronological = [];
+  bool _pendingSync = true;
+
+  double _alpha = 1;
+  double _zoom = 1;
+  Offset _pan = Offset.zero;
+
+  double _gestureStartZoom = 1;
+  GraphNode? _dragNode;
+  bool _gestureActive = false;
+
+  bool _timelinePlaying = false;
+  int _revealed = 0;
+  int _timelineTotal = 0;
+  Duration _timelineStart = Duration.zero;
+  Duration _timelineDuration = Duration.zero;
+  final Map<int, Duration> _births = {};
+
+  double get _minDim => math.min(_canvasSize.width, _canvasSize.height);
+
+  Offset get _center =>
+      Offset(_canvasSize.width / 2, _canvasSize.height / 2);
+
+  int? get _visibleCount => _timelinePlaying ? _revealed : null;
 
   @override
   void initState() {
     super.initState();
-    _ticker = createTicker(_onTick)..start();
+    _ticker = createTicker(_onTick);
+    _ensureTicker();
   }
 
   @override
   void didUpdateWidget(covariant GraphOrb oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.pulseToken != oldWidget.pulseToken) {
-      _velocityYaw = (math.Random().nextBool() ? 1 : -1) * 0.5;
-      _velocityPitch = (math.Random().nextDouble() - 0.5) * 0.28;
+    if (!identical(widget.notes, oldWidget.notes) ||
+        widget.pulseToken != oldWidget.pulseToken ||
+        widget.nodeScale != oldWidget.nodeScale) {
+      _pendingSync = true;
+      _alpha = 1;
+      if (_timelinePlaying) {
+        _timelinePlaying = false;
+        _revealed = 0;
+        _births.clear();
+      }
+      _ensureTicker();
+    }
+    if (widget.activeTag != oldWidget.activeTag) {
+      for (final node in _nodes) {
+        node.selected = widget.activeTag != null &&
+            node.note.tags.contains(widget.activeTag);
+      }
+      for (final link in _links) {
+        link.highlighted = widget.activeTag != null &&
+            link.sharedTags.contains(widget.activeTag);
+      }
     }
   }
 
@@ -73,31 +113,37 @@ class _GraphOrbState extends State<GraphOrb>
     super.dispose();
   }
 
+  void _ensureTicker() {
+    if (!_ticker.isActive) {
+      _lastTick = Duration.zero;
+      _ticker.start();
+    }
+  }
+
   void _onTick(Duration elapsed) {
     if (_lastTick == Duration.zero) {
       _lastTick = elapsed;
       return;
     }
-    final seconds =
-        (elapsed - _lastTick).inMicroseconds.clamp(0, 40000) / 1000000.0;
+    final raw = (elapsed - _lastTick).inMicroseconds;
     _lastTick = elapsed;
-    if (seconds <= 0) {
+    final micros = raw.clamp(0, 50000);
+    if (micros <= 0) {
       return;
     }
+    final dt = micros / 1000000.0;
+    _clock += Duration(microseconds: micros);
 
-    if (!_dragging) {
-      _yaw += _velocityYaw * seconds;
-      _pitch =
-          (_pitch + _velocityPitch * seconds).clamp(-1.18, 1.18).toDouble();
-      final damping = math.pow(0.986, seconds * 60).toDouble();
-      _velocityYaw *= damping;
-      _velocityPitch *= damping;
-      if (_velocityYaw.abs() < 0.13) {
-        _velocityYaw += (0.13 - _velocityYaw.abs()) * 0.04;
-      }
-      if (_velocityPitch.abs() < 0.018) {
-        _velocityPitch += (0.018 - _velocityPitch.abs()) * 0.03;
-      }
+    _stepPhysics(dt);
+    _stepTimeline();
+
+    if (!_timelinePlaying &&
+        !_gestureActive &&
+        _dragNode == null &&
+        _alpha < 0.006) {
+      _alpha = 0;
+      _ticker.stop();
+      _lastTick = Duration.zero;
     }
 
     if (mounted) {
@@ -105,134 +151,368 @@ class _GraphOrbState extends State<GraphOrb>
     }
   }
 
-  GraphScene _buildScene() {
-    if (_canvasSize.isEmpty) {
-      return GraphScene.empty;
+  void _stepPhysics(double dt) {
+    if (_nodes.isEmpty || _canvasSize.isEmpty) {
+      _alpha *= math.pow(0.9, dt * 60).toDouble();
+      if (_alpha < 0.004) {
+        _alpha = 0;
+      }
+      return;
     }
-    return GraphScene.build(
-      notes: widget.notes,
-      size: _canvasSize,
-      yaw: _yaw,
-      pitch: _pitch,
-      nodeScale: widget.nodeScale,
-      activeTag: widget.activeTag,
-      compact: widget.compact,
-    );
+    final frame = (dt * 60).clamp(0.25, 2.0);
+    var strength = _alpha * frame;
+    if (_timelinePlaying) {
+      strength = math.max(strength, 0.35 * frame);
+    }
+    if (strength <= 0) {
+      return;
+    }
+
+    // Мягкое притяжение к центру, чтобы граф не уползал за пределы кадра.
+    final centerPull = 0.0022 * strength;
+    for (final node in _nodes) {
+      node.position *= 1 - centerPull;
+    }
+
+    // Расталкивание только соседних ячеек: O(n) на больших списках.
+    const cellSize = 160.0;
+    final cells = <int, List<GraphNode>>{};
+    for (final node in _nodes) {
+      final cx = (node.position.dx / cellSize).floor();
+      final cy = (node.position.dy / cellSize).floor();
+      cells.putIfAbsent(_cellKey(cx, cy), () => []).add(node);
+    }
+    for (final node in _nodes) {
+      final cx = (node.position.dx / cellSize).floor();
+      final cy = (node.position.dy / cellSize).floor();
+      for (var dx = -1; dx <= 1; dx++) {
+        for (var dy = -1; dy <= 1; dy++) {
+          final bucket = cells[_cellKey(cx + dx, cy + dy)];
+          if (bucket == null) {
+            continue;
+          }
+          for (final other in bucket) {
+            if (other.index <= node.index) {
+              continue;
+            }
+            _repel(node, other, strength);
+          }
+        }
+      }
+    }
+
+    for (final link in _links) {
+      _pull(link, strength);
+    }
+
+    final halfW = _canvasSize.width / 2 + 80;
+    final halfH = _canvasSize.height / 2 + 80;
+    for (final node in _nodes) {
+      node.position = Offset(
+        node.position.dx.clamp(-halfW, halfW),
+        node.position.dy.clamp(-halfH, halfH),
+      );
+    }
+
+    _alpha *= math.pow(0.972, frame).toDouble();
+    if (_alpha < 0.004) {
+      _alpha = 0;
+    }
+  }
+
+  void _repel(GraphNode a, GraphNode b, double strength) {
+    var delta = a.position - b.position;
+    var distance = delta.distance;
+    if (distance < 0.001) {
+      final angle = (a.note.id * 2.399963) % (math.pi * 2);
+      delta = Offset(math.cos(angle), math.sin(angle));
+      distance = 0.001;
+    }
+    final unit = delta / distance;
+    final minimum = a.radius + b.radius + 9;
+    if (distance < minimum) {
+      final push = (minimum - distance) * 0.34 * strength;
+      a.position += unit * push * 0.5;
+      b.position -= unit * push * 0.5;
+    } else if (distance < 150) {
+      final push = (150 - distance) / 150 * 0.42 * strength;
+      a.position += unit * push;
+      b.position -= unit * push;
+    }
+  }
+
+  void _pull(GraphLink link, double strength) {
+    final delta = link.target.position - link.source.position;
+    final distance = delta.distance;
+    if (distance < 0.001) {
+      return;
+    }
+    final desired = 52 + link.source.radius + link.target.radius;
+    final difference = distance - desired;
+    final unit = delta / distance;
+    if (difference > 0) {
+      final pull = difference * 0.014 * strength;
+      link.source.position += unit * pull;
+      link.target.position -= unit * pull;
+    } else {
+      final push = -difference * 0.022 * strength;
+      link.source.position -= unit * push;
+      link.target.position += unit * push;
+    }
+  }
+
+  void _stepTimeline() {
+    if (!_timelinePlaying) {
+      return;
+    }
+    _alpha = math.max(_alpha, 0.45);
+    final totalMicros = _timelineDuration.inMicroseconds;
+    if (totalMicros <= 0 || _timelineTotal == 0) {
+      _timelinePlaying = false;
+      return;
+    }
+    final passed = (_clock - _timelineStart).inMicroseconds;
+    final progress = (passed / totalMicros).clamp(0.0, 1.0);
+    final target = (progress * _timelineTotal).ceil().clamp(0, _timelineTotal);
+    if (target > _revealed) {
+      for (var index = _revealed; index < target; index++) {
+        if (index < _chronological.length) {
+          _births[_chronological[index].note.id] = _clock;
+        }
+      }
+      _revealed = target;
+      _alpha = 1;
+    }
+    if (progress >= 1) {
+      _timelinePlaying = false;
+      _revealed = _timelineTotal;
+      _alpha = 1;
+    }
+  }
+
+  int _cellKey(int x, int y) => ((x & 0xffff) << 16) | (y & 0xffff);
+
+  void _syncNotes() {
+    _pendingSync = false;
+    if (_canvasSize.isEmpty) {
+      return;
+    }
+    final previous = <int, GraphNode>{
+      for (final node in _nodes) node.note.id: node,
+    };
+    final wasEmpty = previous.isEmpty;
+
+    final sorted = [...widget.notes]..sort((a, b) {
+        final byDate = a.createdAt.compareTo(b.createdAt);
+        return byDate != 0 ? byDate : a.id.compareTo(b.id);
+      });
+    final chronologicalIndex = <int, int>{
+      for (var index = 0; index < sorted.length; index++) sorted[index].id: index,
+    };
+
+    final nextNodes = <GraphNode>[];
+    final maxRadius = _minDim * 0.4;
+    final count = math.max(1, sorted.length);
+    for (final note in widget.notes) {
+      final existing = previous[note.id];
+      if (existing != null) {
+        existing.note = note;
+        nextNodes.add(existing);
+        continue;
+      }
+      final chrono = chronologicalIndex[note.id] ?? 0;
+      late Offset position;
+      if (wasEmpty) {
+        final angle = chrono * 2.399963229728653;
+        final radius = 14 + math.sqrt((chrono + 0.5) / count) * maxRadius;
+        position = Offset(math.cos(angle), math.sin(angle)) * radius;
+      } else {
+        final angle = (note.id * 0.6180339887) % (math.pi * 2);
+        final radius = 12.0 + (note.id % 6) * 6.0;
+        position = Offset(math.cos(angle), math.sin(angle)) * radius;
+      }
+      nextNodes.add(GraphNode(note: note, position: position, radius: 5));
+    }
+
+    final nextChronological = [...nextNodes]..sort(
+        (a, b) => (chronologicalIndex[a.note.id] ?? 0)
+            .compareTo(chronologicalIndex[b.note.id] ?? 0),
+      );
+
+    final byTag = <String, List<int>>{};
+    for (var index = 0; index < nextNodes.length; index++) {
+      for (final tag in nextNodes[index].note.tags) {
+        byTag.putIfAbsent(tag, () => []).add(index);
+      }
+    }
+    final pairTags = <String, List<String>>{};
+    for (final entry in byTag.entries) {
+      final list = entry.value;
+      if (list.length < 2) {
+        continue;
+      }
+      if (list.length <= 30) {
+        for (var first = 0; first < list.length; first++) {
+          for (var second = first + 1; second < list.length; second++) {
+            _addPair(pairTags, list[first], list[second], entry.key);
+          }
+        }
+      } else {
+        for (var index = 1; index < list.length; index++) {
+          _addPair(pairTags, list[index - 1], list[index], entry.key);
+        }
+      }
+    }
+
+    final degree = List<int>.filled(nextNodes.length, 0);
+    final nextLinks = <GraphLink>[];
+    for (final entry in pairTags.entries) {
+      final separator = entry.key.indexOf(':');
+      final first = int.parse(entry.key.substring(0, separator));
+      final second = int.parse(entry.key.substring(separator + 1));
+      degree[first]++;
+      degree[second]++;
+      nextLinks.add(
+        GraphLink(
+          source: nextNodes[first],
+          target: nextNodes[second],
+          sharedTags: entry.value,
+          highlighted: widget.activeTag != null &&
+              entry.value.contains(widget.activeTag),
+        ),
+      );
+    }
+
+    for (var index = 0; index < nextNodes.length; index++) {
+      final node = nextNodes[index];
+      node.index = index;
+      node.degree = degree[index];
+      node.chronoIndex = chronologicalIndex[node.note.id] ?? index;
+      node.radius =
+          (4.6 + math.min(7.0, math.sqrt(degree[index]) * 2.1)) *
+              widget.nodeScale.clamp(0.45, 2.2);
+      node.selected = widget.activeTag != null &&
+          node.note.tags.contains(widget.activeTag);
+    }
+
+    _nodes
+      ..clear()
+      ..addAll(nextNodes);
+    _links
+      ..clear()
+      ..addAll(nextLinks);
+    _chronological
+      ..clear()
+      ..addAll(nextChronological);
+    _timelineTotal = _chronological.length;
+    if (_revealed > _timelineTotal) {
+      _revealed = _timelineTotal;
+    }
+  }
+
+  void _addPair(
+    Map<String, List<String>> pairs,
+    int first,
+    int second,
+    String tag,
+  ) {
+    final low = math.min(first, second);
+    final high = math.max(first, second);
+    pairs.putIfAbsent('$low:$high', () => []).add(tag);
+  }
+
+  void _updateCanvasSize(Size size) {
+    if (size == _canvasSize) {
+      return;
+    }
+    final old = _canvasSize;
+    _canvasSize = size;
+    if (old.isEmpty) {
+      _pendingSync = true;
+      return;
+    }
+    final factor = math.min(size.width / old.width, size.height / old.height);
+    for (final node in _nodes) {
+      node.position *= factor;
+    }
+    _alpha = math.max(_alpha, 0.55);
+    _ensureTicker();
+  }
+
+  GraphNode? _nodeAt(Offset localPosition) {
+    if (_canvasSize.isEmpty) {
+      return null;
+    }
+    final world =
+        (localPosition - _center - _pan) / _zoom;
+    final visible = _visibleCount;
+    for (final node in _nodes.reversed) {
+      if (visible != null && node.chronoIndex >= visible) {
+        continue;
+      }
+      if ((world - node.position).distance <=
+          node.radius + 9 / _zoom + 3) {
+        return node;
+      }
+    }
+    return null;
   }
 
   void _handleTap(Offset localPosition) {
-    final node = _scene.hitTest(localPosition);
+    final node = _nodeAt(localPosition);
     if (node == null) {
+      if (widget.activeTag != null) {
+        widget.onTagSelected(null);
+      }
       return;
     }
-    if (node.tags.isEmpty) {
+    if (node.note.tags.isEmpty) {
       widget.onNotice?.call('Добавьте #хэштег в заметку для связи');
       return;
     }
-    final tag = node.tags.first;
+    final tag = node.note.tags.first;
     widget.onTagSelected(widget.activeTag == tag ? null : tag);
+  }
+
+  void _toggleTimeline() {
+    if (_timelineTotal < 2) {
+      widget.onNotice?.call('Нужно хотя бы две заметки');
+      return;
+    }
+    if (_timelinePlaying) {
+      _timelinePlaying = false;
+      _revealed = 0;
+      _births.clear();
+      _alpha = 1;
+    } else {
+      _timelinePlaying = true;
+      _revealed = 0;
+      _births.clear();
+      _timelineStart = _clock;
+      final millis =
+          (_timelineTotal * 150).clamp(2400, 15000).toInt();
+      _timelineDuration = Duration(milliseconds: millis);
+      _alpha = 0.85;
+      widget.onNotice?.call(
+        'История создания: $_timelineTotal '
+        '${_plural(_timelineTotal, 'заметка', 'заметки', 'заметок')}',
+      );
+    }
+    _ensureTicker();
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    _scene = _buildScene();
     final radius = widget.compact
         ? const BorderRadius.only(
-            topLeft: Radius.circular(38),
-            topRight: Radius.circular(38),
-            bottomLeft: Radius.circular(48),
-            bottomRight: Radius.circular(48),
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+            bottomLeft: Radius.circular(24),
+            bottomRight: Radius.circular(24),
           )
-        : BorderRadius.circular(26);
-
-    final chrome = widget.showChrome
-        ? Positioned.fill(
-            child: IgnorePointer(
-              ignoring: false,
-              child: Stack(
-                children: [
-                  Positioned(
-                    left: 15,
-                    top: 14,
-                    child: IgnorePointer(
-                      child: Text(
-                        _scene.nodes.isEmpty
-                            ? 'нет узлов'
-                            : '${_scene.nodes.length} '
-                                '${_plural(_scene.nodes.length, 'узел', 'узла', 'узлов')}',
-                        style: TextStyle(
-                          color: palette.muted.withValues(alpha: 0.85),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.1,
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (widget.onClose != null)
-                    Positioned(
-                      right: 11,
-                      top: 10,
-                      child: _GraphIconButton(
-                        icon: Icons.close_rounded,
-                        tooltip: 'Свернуть граф',
-                        onPressed: widget.onClose!,
-                      ),
-                    )
-                  else if (widget.onExpand != null)
-                    Positioned(
-                      right: 11,
-                      top: 10,
-                      child: _GraphIconButton(
-                        icon: Icons.open_in_full_rounded,
-                        tooltip: 'Развернуть граф',
-                        onPressed: widget.onExpand!,
-                      ),
-                    ),
-                  if (widget.activeTag != null)
-                    Positioned(
-                      left: 14,
-                      bottom: 12,
-                      child: IgnorePointer(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.72),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.15),
-                            ),
-                          ),
-                          child: Text.rich(
-                            TextSpan(
-                              text: 'Фильтр: ',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.white.withValues(alpha: 0.72),
-                              ),
-                              children: [
-                                TextSpan(
-                                  text: widget.activeTag,
-                                  style: TextStyle(
-                                    color: palette.accent,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          )
-        : const SizedBox.shrink();
+        : BorderRadius.circular(18);
 
     return ClipRRect(
       borderRadius: radius,
@@ -240,57 +520,83 @@ class _GraphOrbState extends State<GraphOrb>
         decoration: BoxDecoration(
           color: palette.graph,
           borderRadius: radius,
-          border: Border.all(
-            color: palette.border,
-            width: 1.3,
-          ),
+          border: Border.all(color: palette.border, width: 1.2),
         ),
         child: MouseRegion(
-          cursor:
-              _dragging ? SystemMouseCursors.grabbing : SystemMouseCursors.grab,
+          cursor: _gestureActive
+              ? SystemMouseCursors.grabbing
+              : SystemMouseCursors.grab,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onPanStart: (details) {
-              _dragging = true;
-              _lastDragPosition = details.localPosition;
+            onScaleStart: (details) {
+              _gestureActive = true;
+              _gestureStartZoom = _zoom;
+              _dragNode = _nodeAt(details.localFocalPoint);
+              _alpha = math.max(_alpha, 0.45);
+              _ensureTicker();
             },
-            onPanUpdate: (details) {
-              if (!_dragging) {
+            onScaleUpdate: (details) {
+              if (_dragNode != null) {
+                _dragNode!.position =
+                    (details.localFocalPoint - _center - _pan) / _zoom;
+                _alpha = math.max(_alpha, 0.65);
+                _ensureTicker();
+                setState(() {});
                 return;
               }
-              final previous = _lastDragPosition ?? details.localPosition;
-              final dx = details.localPosition.dx - previous.dx;
-              final dy = details.localPosition.dy - previous.dy;
-              _lastDragPosition = details.localPosition;
-              _yaw += dx * 0.009;
-              _pitch = (_pitch - dy * 0.009).clamp(-1.18, 1.18).toDouble();
-              _velocityYaw = dx * 0.09;
-              _velocityPitch = -dy * 0.09;
+              if (details.pointerCount >= 2) {
+                final focal = details.localFocalPoint;
+                final worldBefore = (focal - _center - _pan) / _zoom;
+                _zoom = (_gestureStartZoom * details.scale)
+                    .clamp(0.55, 2.6)
+                    .toDouble();
+                _pan = focal - _center - worldBefore * _zoom;
+              } else {
+                _pan += details.focalPointDelta;
+              }
+              setState(() {});
             },
-            onPanEnd: (_) {
-              _dragging = false;
-              _lastDragPosition = null;
-            },
-            onPanCancel: () {
-              _dragging = false;
-              _lastDragPosition = null;
+            onScaleEnd: (_) {
+              _gestureActive = false;
+              _dragNode = null;
+              _alpha = math.max(_alpha, 0.5);
+              _ensureTicker();
             },
             onTapUp: (details) => _handleTap(details.localPosition),
+            onDoubleTap: () {
+              setState(() {
+                _zoom = 1;
+                _pan = Offset.zero;
+              });
+            },
             child: LayoutBuilder(
               builder: (context, constraints) {
-                _canvasSize = Size(
-                  constraints.maxWidth,
-                  constraints.maxHeight,
+                _updateCanvasSize(
+                  Size(constraints.maxWidth, constraints.maxHeight),
                 );
-                _scene = _buildScene();
+                if (_pendingSync) {
+                  _syncNotes();
+                }
+                final visible = _visibleCount;
                 return Stack(
                   fit: StackFit.expand,
                   children: [
                     CustomPaint(
                       painter: _GraphPainter(
-                        scene: _scene,
+                        nodes: _nodes,
+                        links: _links,
                         palette: palette,
                         compact: widget.compact,
+                        zoom: _zoom,
+                        pan: _pan,
+                        visibleCount: visible,
+                        hasFilter: widget.activeTag != null,
+                        now: _clock,
+                        births: _births,
+                        timelinePlaying: _timelinePlaying,
+                        timelineProgress: _timelineTotal == 0
+                            ? 0
+                            : _revealed / _timelineTotal,
                       ),
                     ),
                     if (widget.notes.isEmpty)
@@ -306,7 +612,98 @@ class _GraphOrbState extends State<GraphOrb>
                           ),
                         ),
                       ),
-                    chrome,
+                    if (widget.showChrome) ...[
+                      Positioned(
+                        left: 14,
+                        top: 11,
+                        child: IgnorePointer(
+                          child: Text(
+                            _timelinePlaying
+                                ? '$_revealed / $_timelineTotal'
+                                : _nodes.isEmpty
+                                    ? 'нет узлов'
+                                    : '${_nodes.length} '
+                                        '${_plural(_nodes.length, 'узел', 'узла', 'узлов')}',
+                            style: TextStyle(
+                              color: palette.muted.withValues(alpha: 0.8),
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 10,
+                        top: 8,
+                        child: Row(
+                          children: [
+                            if (_timelineTotal > 1) ...[
+                              _GraphChromeButton(
+                                icon: _timelinePlaying
+                                    ? Icons.stop_rounded
+                                    : Icons.play_arrow_rounded,
+                                tooltip: _timelinePlaying
+                                    ? 'Остановить историю'
+                                    : 'История графа',
+                                palette: palette,
+                                onPressed: _toggleTimeline,
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            if (widget.onClose != null)
+                              _GraphChromeButton(
+                                icon: Icons.close_rounded,
+                                tooltip: 'Свернуть граф',
+                                palette: palette,
+                                onPressed: widget.onClose!,
+                              )
+                            else if (widget.onExpand != null)
+                              _GraphChromeButton(
+                                icon: Icons.open_in_full_rounded,
+                                tooltip: 'Развернуть граф',
+                                palette: palette,
+                                onPressed: widget.onExpand!,
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (widget.activeTag != null)
+                        Positioned(
+                          left: 12,
+                          bottom: 14,
+                          child: IgnorePointer(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: palette.card.withValues(alpha: 0.9),
+                                borderRadius: BorderRadius.circular(7),
+                                border: Border.all(color: palette.border),
+                              ),
+                              child: Text.rich(
+                                TextSpan(
+                                  text: 'Фильтр: ',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: palette.muted,
+                                  ),
+                                  children: [
+                                    TextSpan(
+                                      text: widget.activeTag,
+                                      style: TextStyle(
+                                        color: palette.accent,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ],
                 );
               },
@@ -330,15 +727,17 @@ String _plural(int value, String one, String few, String many) {
   return many;
 }
 
-class _GraphIconButton extends StatelessWidget {
-  const _GraphIconButton({
+class _GraphChromeButton extends StatelessWidget {
+  const _GraphChromeButton({
     required this.icon,
     required this.tooltip,
+    required this.palette,
     required this.onPressed,
   });
 
   final IconData icon;
   final String tooltip;
+  final OffloadPalette palette;
   final VoidCallback onPressed;
 
   @override
@@ -346,17 +745,20 @@ class _GraphIconButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: Colors.black.withValues(alpha: 0.24),
-        shape: const CircleBorder(),
+        color: palette.card.withValues(alpha: 0.92),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(9),
+          side: BorderSide(color: palette.border),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onPressed,
           child: SizedBox.square(
-            dimension: 32,
+            dimension: 30,
             child: Icon(
               icon,
               size: 16,
-              color: Colors.white.withValues(alpha: 0.72),
+              color: palette.text.withValues(alpha: 0.75),
             ),
           ),
         ),
@@ -365,163 +767,26 @@ class _GraphIconButton extends StatelessWidget {
   }
 }
 
-class GraphScene {
-  const GraphScene({
-    required this.nodes,
-    required this.links,
-    required this.center,
-    required this.sphereRadius,
-  });
-
-  static const empty = GraphScene(
-    nodes: [],
-    links: [],
-    center: Offset.zero,
-    sphereRadius: 0,
-  );
-
-  final List<GraphNode> nodes;
-  final List<GraphLink> links;
-  final Offset center;
-  final double sphereRadius;
-
-  GraphNode? hitTest(Offset position) {
-    final sorted = [...nodes]..sort((a, b) => b.depth.compareTo(a.depth));
-    for (final node in sorted) {
-      if ((position - node.position).distance <= node.radius + 13) {
-        return node;
-      }
-    }
-    return null;
-  }
-
-  static GraphScene build({
-    required List<Note> notes,
-    required Size size,
-    required double yaw,
-    required double pitch,
-    required double nodeScale,
-    required String? activeTag,
-    required bool compact,
-  }) {
-    if (size.isEmpty) {
-      return empty;
-    }
-
-    final center = Offset(size.width / 2, size.height / 2);
-    final sphereRadius = math.min(size.width, size.height) * 0.34;
-    const fov = 340.0;
-    final cosYaw = math.cos(yaw);
-    final sinYaw = math.sin(yaw);
-    final cosPitch = math.cos(pitch);
-    final sinPitch = math.sin(pitch);
-    final count = notes.length;
-    final goldenAngle = math.pi * (3 - math.sqrt(5));
-
-    final nodes = <GraphNode>[];
-    for (var index = 0; index < count; index++) {
-      final note = notes[index];
-      double x;
-      double y;
-      double z;
-      if (count == 1) {
-        x = 0;
-        y = 0;
-        z = 0;
-      } else if (count == 2) {
-        x = index == 0 ? -0.55 : 0.55;
-        y = index == 0 ? -0.2 : 0.2;
-        z = 0;
-      } else {
-        y = 1 - (index / (count - 1)) * 2;
-        final radiusAtY = math.sqrt(math.max(0, 1 - y * y));
-        final theta = goldenAngle * index;
-        x = math.cos(theta) * radiusAtY;
-        z = math.sin(theta) * radiusAtY;
-      }
-
-      final x1 = x * cosYaw + z * sinYaw;
-      final z1 = -x * sinYaw + z * cosYaw;
-      final y1 = y;
-      final y2 = y1 * cosPitch - z1 * sinPitch;
-      final z2 = y1 * sinPitch + z1 * cosPitch;
-
-      final depth = z2 * sphereRadius;
-      final perspective = fov / math.max(80, fov - depth);
-      final position = Offset(
-        center.dx + x1 * sphereRadius * perspective,
-        center.dy + y2 * sphereRadius * perspective,
-      );
-      final isSelected = activeTag != null && note.tags.contains(activeTag);
-      final baseRadius = note.tags.isEmpty ? 8.0 : 9.5;
-      final radius = math.max(
-        3.5,
-        baseRadius * nodeScale * perspective * (isSelected ? 1.2 : 1.0),
-      );
-      nodes.add(
-        GraphNode(
-          note: note,
-          position: position,
-          depth: z2,
-          radius: radius,
-          scale: perspective,
-          selected: isSelected,
-        ),
-      );
-    }
-
-    final links = <GraphLink>[];
-    for (var first = 0; first < nodes.length; first++) {
-      for (var second = first + 1; second < nodes.length; second++) {
-        final firstNode = nodes[first];
-        final secondNode = nodes[second];
-        final shared = firstNode.note.tags
-            .where(secondNode.note.tags.contains)
-            .toList(growable: false);
-        if (shared.isNotEmpty) {
-          links.add(
-            GraphLink(
-              source: firstNode,
-              target: secondNode,
-              sharedTags: shared,
-              highlighted: activeTag != null && shared.contains(activeTag),
-            ),
-          );
-        }
-      }
-    }
-
-    return GraphScene(
-      nodes: nodes,
-      links: links,
-      center: center,
-      sphereRadius: sphereRadius,
-    );
-  }
-}
-
 class GraphNode {
-  const GraphNode({
+  GraphNode({
     required this.note,
     required this.position,
-    required this.depth,
     required this.radius,
-    required this.scale,
-    required this.selected,
   });
 
-  final Note note;
-  final Offset position;
-  final double depth;
-  final double radius;
-  final double scale;
-  final bool selected;
+  Note note;
+  Offset position;
+  double radius;
+  int degree = 0;
+  int index = 0;
+  int chronoIndex = 0;
+  bool selected = false;
 
   List<String> get tags => note.tags;
 }
 
 class GraphLink {
-  const GraphLink({
+  GraphLink({
     required this.source,
     required this.target,
     required this.sharedTags,
@@ -531,19 +796,60 @@ class GraphLink {
   final GraphNode source;
   final GraphNode target;
   final List<String> sharedTags;
-  final bool highlighted;
+  bool highlighted;
 }
 
 class _GraphPainter extends CustomPainter {
   _GraphPainter({
-    required this.scene,
+    required this.nodes,
+    required this.links,
     required this.palette,
     required this.compact,
+    required this.zoom,
+    required this.pan,
+    required this.visibleCount,
+    required this.hasFilter,
+    required this.now,
+    required this.births,
+    required this.timelinePlaying,
+    required this.timelineProgress,
   });
 
-  final GraphScene scene;
+  final List<GraphNode> nodes;
+  final List<GraphLink> links;
   final OffloadPalette palette;
   final bool compact;
+  final double zoom;
+  final Offset pan;
+  final int? visibleCount;
+  final bool hasFilter;
+  final Duration now;
+  final Map<int, Duration> births;
+  final bool timelinePlaying;
+  final double timelineProgress;
+
+  bool _visible(GraphNode node) =>
+      visibleCount == null || node.chronoIndex < visibleCount!;
+
+  double _pop(GraphNode node) {
+    final birth = births[node.note.id];
+    if (birth == null) {
+      return 1;
+    }
+    final progress =
+        ((now - birth).inMicroseconds / 300000).clamp(0.0, 1.0).toDouble();
+    if (progress >= 1) {
+      return 1;
+    }
+    return Curves.easeOutBack.transform(progress);
+  }
+
+  Offset _screen(Offset world, Size size) {
+    return Offset(
+      size.width / 2 + pan.dx + world.dx * zoom,
+      size.height / 2 + pan.dy + world.dy * zoom,
+    );
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -551,157 +857,180 @@ class _GraphPainter extends CustomPainter {
       return;
     }
 
-    final backgroundPaint = Paint()
+    final background = Paint()
       ..shader = RadialGradient(
         colors: [
-          Color.lerp(palette.graph, palette.text, 0.045)!,
+          Color.lerp(palette.graph, palette.text, 0.035)!,
           palette.graph,
         ],
-        stops: const [0, 0.85],
+        stops: const [0, 0.9],
       ).createShader(Offset.zero & size);
-    canvas.drawRect(Offset.zero & size, backgroundPaint);
+    canvas.drawRect(Offset.zero & size, background);
 
-    final center = scene.center;
-    final sphereRadius = scene.sphereRadius;
-    if (sphereRadius <= 0) {
-      return;
-    }
-
-    final spherePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = palette.graphGrid;
-    canvas.drawCircle(center, sphereRadius, spherePaint);
-
-    final innerPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.7
-      ..color = palette.graphGrid.withValues(alpha: 0.65);
-    canvas.drawCircle(center, sphereRadius * 0.68, innerPaint);
-
-    for (final link in scene.links) {
-      final source = link.source;
-      final target = link.target;
-      final averageDepth = (source.depth + target.depth) / 2;
-      final alpha = ((averageDepth + 1.2) / 2.4).clamp(0.12, 0.82).toDouble();
-      final paint = Paint()
-        ..strokeWidth =
-            (link.highlighted ? 2.0 : 1.25) * (0.7 + source.scale * 0.3)
-        ..strokeCap = StrokeCap.round
-        ..color = link.highlighted
-            ? palette.accent.withValues(alpha: alpha)
-            : palette.graphLine.withValues(alpha: alpha * 0.62);
-      canvas.drawLine(source.position, target.position, paint);
-
-      if (!compact) {
-        _paintLinkLabel(canvas, link, alpha);
+    final dotPaint = Paint()
+      ..color = palette.graphGrid.withValues(alpha: 0.85);
+    const spacing = 27.0;
+    final startX =
+        ((size.width / 2 + pan.dx) % spacing + spacing) % spacing;
+    final startY =
+        ((size.height / 2 + pan.dy) % spacing + spacing) % spacing;
+    for (var x = startX; x < size.width; x += spacing) {
+      for (var y = startY; y < size.height; y += spacing) {
+        canvas.drawCircle(Offset(x, y), 0.75, dotPaint);
       }
     }
 
-    final sorted = [...scene.nodes]..sort((a, b) => a.depth.compareTo(b.depth));
-    for (final node in sorted) {
-      _paintNode(canvas, node);
+    canvas.save();
+    canvas.translate(size.width / 2 + pan.dx, size.height / 2 + pan.dy);
+    canvas.scale(zoom);
+
+    for (final link in links) {
+      if (!_visible(link.source) || !_visible(link.target)) {
+        continue;
+      }
+      final highlight = link.highlighted;
+      final opacity = hasFilter && !highlight
+          ? 0.1
+          : highlight
+              ? 0.72
+              : 0.42;
+      final paint = Paint()
+        ..strokeWidth = (highlight ? 1.9 : 1.25) / zoom
+        ..strokeCap = StrokeCap.round
+        ..color = (highlight ? palette.accent : palette.graphLine)
+            .withValues(alpha: opacity);
+      canvas.drawLine(
+        link.source.position,
+        link.target.position,
+        paint,
+      );
+    }
+
+    final ordered = [...nodes]..sort((a, b) => b.radius.compareTo(a.radius));
+    final nodeBase = palette.graph.computeLuminance() > 0.5
+        ? const Color(0xFF404040)
+        : const Color(0xFFD6D6D6);
+    for (final node in ordered) {
+      if (!_visible(node)) {
+        continue;
+      }
+      final pop = _pop(node);
+      if (pop <= 0.02) {
+        continue;
+      }
+      final radius = math.max(1.5, node.radius * pop);
+      final dimmed = hasFilter && !node.selected;
+      final color = node.selected ? palette.accent : nodeBase;
+      final alpha = dimmed ? 0.32 : 1.0;
+
+      if (node.selected) {
+        final ring = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6 / zoom
+          ..color = palette.accent.withValues(alpha: 0.28);
+        canvas.drawCircle(
+          node.position,
+          radius + 4.5 / zoom,
+          ring,
+        );
+      }
+
+      final glow = Paint()
+        ..color = color.withValues(alpha: alpha * 0.32)
+        ..maskFilter = ui.MaskFilter.blur(
+          ui.BlurStyle.normal,
+          node.selected ? 7 : 3.5,
+        );
+      canvas.drawCircle(node.position, radius * 1.55, glow);
+
+      final fill = Paint()
+        ..style = PaintingStyle.fill
+        ..color = color.withValues(alpha: alpha);
+      canvas.drawCircle(node.position, radius, fill);
+
+      final border = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.1 / zoom
+        ..color = palette.graph.withValues(alpha: alpha * 0.9);
+      canvas.drawCircle(node.position, radius, border);
+    }
+
+    canvas.restore();
+
+    if (!compact) {
+      _paintLabels(canvas, size);
+    }
+
+    if (timelinePlaying) {
+      final y = size.height - 3;
+      final track = Paint()
+        ..color = palette.graphLine.withValues(alpha: 0.14)
+        ..strokeWidth = 2.4
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(Offset(10, y), Offset(size.width - 10, y), track);
+      final active = Paint()
+        ..color = palette.accent
+        ..strokeWidth = 2.4
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        Offset(10, y),
+        Offset(10 + (size.width - 20) * timelineProgress, y),
+        active,
+      );
     }
   }
 
-  void _paintLinkLabel(Canvas canvas, GraphLink link, double alpha) {
-    final middle = Offset(
-      (link.source.position.dx + link.target.position.dx) / 2,
-      (link.source.position.dy + link.target.position.dy) / 2 - 7,
-    );
-    final painter = TextPainter(
-      text: TextSpan(
-        text: link.sharedTags.join(' '),
-        style: TextStyle(
-          fontFamily: 'Inter',
-          fontSize: 10,
-          fontWeight: FontWeight.w500,
-          color: palette.accent.withValues(alpha: alpha * 0.95),
+  void _paintLabels(Canvas canvas, Size size) {
+    for (final node in nodes) {
+      if (!_visible(node) || _pop(node) < 0.55) {
+        continue;
+      }
+      if (nodes.length > 80 && !node.selected && node.degree < 3) {
+        continue;
+      }
+      final point = _screen(node.position, size);
+      final radius = node.radius * zoom * _pop(node);
+      if (point.dx < -80 ||
+          point.dx > size.width + 80 ||
+          point.dy < -40 ||
+          point.dy > size.height + 40) {
+        continue;
+      }
+      final style = TextStyle(
+        fontFamily: 'Inter',
+        fontSize: node.selected ? 11.5 : 10.5,
+        fontWeight: node.selected ? FontWeight.w600 : FontWeight.w500,
+        color: node.selected
+            ? palette.accent
+            : palette.muted.withValues(alpha: 0.92),
+      );
+      final painter = TextPainter(
+        text: TextSpan(text: node.note.graphLabel, style: style),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: '…',
+      )..layout(maxWidth: 138);
+      var x = point.dx - painter.width / 2;
+      x = x.clamp(5.0, math.max(5.0, size.width - painter.width - 5));
+      var y = point.dy + radius + 4;
+      if (y + painter.height > size.height - 6) {
+        y = point.dy - radius - painter.height - 3;
+      }
+      final shadow = TextPainter(
+        text: TextSpan(
+          text: node.note.graphLabel,
+          style: style.copyWith(
+            color: palette.graph,
+            fontWeight: FontWeight.w700,
+          ),
         ),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout();
-    painter.paint(
-      canvas,
-      middle - Offset(painter.width / 2, painter.height / 2),
-    );
-  }
-
-  void _paintNode(Canvas canvas, GraphNode node) {
-    final depthAlpha = ((node.depth + 1.3) / 2.3).clamp(0.28, 1.0).toDouble();
-    final customColor = _parseColor(node.note.color);
-    final color = node.selected
-        ? palette.accent
-        : customColor ??
-            (palette.graph.computeLuminance() > 0.5
-                ? const Color(0xFF334155)
-                : const Color(0xFFE4E4E7));
-
-    final glow = Paint()
-      ..color = color.withValues(alpha: depthAlpha * 0.45)
-      ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 7);
-    canvas.drawCircle(node.position, node.radius * 1.8, glow);
-
-    final fill = Paint()
-      ..color = color.withValues(alpha: depthAlpha)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(node.position, node.radius, fill);
-
-    final border = Paint()
-      ..color = (palette.graph.computeLuminance() > 0.5
-              ? Colors.white
-              : const Color(0xFF181A1F))
-          .withValues(alpha: depthAlpha)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-    canvas.drawCircle(node.position, node.radius, border);
-
-    final label = node.note.graphLabel;
-    final textStyle = TextStyle(
-      fontFamily: 'Inter',
-      fontSize: compact ? 8.5 : (node.selected ? 11.8 : 11.2),
-      fontWeight: node.depth > 0 ? FontWeight.w600 : FontWeight.w500,
-      color: node.selected ? palette.accent : customColor ?? palette.text,
-    );
-    final maxWidth = compact ? 86.0 : 150.0;
-    final labelPainter = TextPainter(
-      text: TextSpan(text: label, style: textStyle),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      ellipsis: '…',
-    )..layout(maxWidth: maxWidth);
-
-    final labelX = (node.position.dx - labelPainter.width / 2)
-        .clamp(6.0, math.max(6.0, scene.center.dx * 2 - maxWidth - 6))
-        .toDouble();
-    final labelY = node.position.dy + node.radius + 4;
-    final shadowPainter = TextPainter(
-      text: TextSpan(
-        text: label,
-        style: textStyle.copyWith(
-          color: palette.graph,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      ellipsis: '…',
-    )..layout(maxWidth: maxWidth);
-    shadowPainter.paint(canvas, Offset(labelX, labelY));
-    labelPainter.paint(canvas, Offset(labelX, labelY));
-  }
-
-  Color? _parseColor(String value) {
-    final clean = value.replaceFirst('#', '');
-    if (clean.length != 6) {
-      return null;
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: '…',
+      )..layout(maxWidth: 138);
+      shadow.paint(canvas, Offset(x, y + 0.8));
+      painter.paint(canvas, Offset(x, y));
     }
-    final parsed = int.tryParse(clean, radix: 16);
-    if (parsed == null) {
-      return null;
-    }
-    return Color(0xFF000000 | parsed);
   }
 
   @override

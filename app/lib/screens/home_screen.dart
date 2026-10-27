@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import '../data/note_store.dart';
 import '../models/app_settings.dart';
 import '../models/note.dart';
-import '../services/fullscreen.dart';
 import '../theme/offload_theme.dart';
 import '../widgets/graph_orb.dart';
 import '../widgets/offload_nav_bar.dart';
@@ -63,12 +62,16 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
+    _inputController.addListener(_onComposerChanged);
+    _inputFocus.addListener(_onComposerChanged);
     _loadNotes();
   }
 
   @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
+    _inputController.removeListener(_onComposerChanged);
+    _inputFocus.removeListener(_onComposerChanged);
     _inputController.dispose();
     _searchController.dispose();
     _inputFocus.dispose();
@@ -79,6 +82,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onSearchChanged() {
     setState(() {});
+  }
+
+  void _onComposerChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _loadNotes({bool showSpinner = false}) async {
@@ -222,38 +231,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _setNoteColor(Note note, String color) async {
-    final index = _notes.indexWhere((item) => item.id == note.id);
-    if (index < 0) {
-      return;
-    }
-    final original = _notes[index];
-    final optimistic = original.copyWith(color: color);
-    _replaceNote(optimistic);
-    try {
-      final updated = await _store.update(note.id, color: color);
-      if (!mounted) {
-        return;
-      }
-      _replaceNote(updated);
-      setState(() {
-        _storageError = false;
-      });
-      _showDropPreview();
-      _showToast(color.isEmpty ? 'Цвет сброшен' : 'Цвет заметки обновлён');
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      _replaceNote(original);
-      setState(() {
-        _storageError = true;
-        _error = error.toString();
-      });
-      _showToast('Не удалось изменить цвет');
-    }
-  }
-
   Future<void> _editNote(Note note) async {
     final palette = context.palette;
     final controller = TextEditingController(text: note.text);
@@ -263,7 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return AlertDialog(
           backgroundColor: palette.card,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(16),
             side: BorderSide(color: palette.border),
           ),
           title: Text(
@@ -295,15 +272,15 @@ class _HomeScreenState extends State<HomeScreen> {
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: palette.border),
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: palette.border),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: palette.accent),
               ),
             ),
@@ -402,9 +379,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _dropVisible = true;
     });
     _dropTimer = Timer(
-      Duration(
-        milliseconds: (widget.settings.dropHideSeconds * 1000).round(),
-      ),
+      const Duration(seconds: 3),
       () {
         if (mounted && _isSettings) {
           setState(() {
@@ -440,21 +415,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ? 'Не удалось прочитать хранилище'
           : 'Данные хранятся на телефоне',
     );
-  }
-
-  Future<void> _toggleFullscreen() async {
-    try {
-      final entered = await toggleFullscreen();
-      if (!mounted) {
-        return;
-      }
-      _showToast(entered ? 'Полноэкранный режим' : 'Обычный режим');
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      _showToast('Браузер не разрешил полноэкранный режим');
-    }
   }
 
   void _handleVoice() {
@@ -653,7 +613,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
               color: palette.card,
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: palette.border),
             ),
             child: Row(
@@ -702,12 +662,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
-        const SizedBox(width: 12),
-        _StatusButton(
-          healthy: !_storageError,
-          palette: palette,
-          onPressed: _refreshStorage,
-        ),
       ],
     );
   }
@@ -719,9 +673,7 @@ class _HomeScreenState extends State<HomeScreen> {
         notes: _notes,
         storageHealthy: !_storageError,
         onSettingsChanged: widget.onSettingsChanged,
-        onColorChanged: _setNoteColor,
         onShowDrop: _showDropPreview,
-        onFullscreen: _toggleFullscreen,
       );
     }
     if (_isWip) {
@@ -814,7 +766,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
             decoration: BoxDecoration(
               color: palette.card,
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: palette.border),
             ),
             child: Text(
@@ -851,25 +803,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildComposer(OffloadPalette palette) {
+    final typed = _inputController.text.trim().isNotEmpty;
     return Container(
-      height: 50,
-      padding: const EdgeInsets.symmetric(horizontal: 9),
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: palette.card,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: palette.border),
       ),
       child: Row(
         children: [
-          _SmallIconButton(
-            icon: Icons.add_rounded,
-            tooltip: 'Добавить мысль',
-            palette: palette,
-            onPressed: _saving ? null : _addNote,
-            busy: _saving,
-          ),
+          const SizedBox(width: 8),
           Expanded(
             child: TextField(
+              key: const Key('composer-input'),
               controller: _inputController,
               focusNode: _inputFocus,
               textInputAction: TextInputAction.send,
@@ -882,7 +830,7 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
-                hintText: 'Наговорить или записать мысль...',
+                hintText: 'Записать мысль...',
                 hintStyle: TextStyle(
                   color: palette.muted,
                   fontSize: 13,
@@ -891,11 +839,62 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          _SmallIconButton(
-            icon: Icons.mic_none_rounded,
-            tooltip: 'Голосовой ввод',
-            palette: palette,
-            onPressed: _handleVoice,
+          const SizedBox(width: 2),
+          AnimatedContainer(
+            key: const Key('composer-actions'),
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            width: typed ? 88 : 44,
+            height: 44,
+            child: Stack(
+              children: [
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack,
+                  left: typed ? 0 : 4,
+                  top: 2,
+                  width: 40,
+                  height: 40,
+                  child: _ComposerButton(
+                    icon: Icons.mic_none_rounded,
+                    tooltip: 'Голосовой ввод',
+                    palette: palette,
+                    background: palette.accentSoft,
+                    foreground: palette.text,
+                    onPressed: _handleVoice,
+                  ),
+                ),
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack,
+                  left: typed ? 48 : 40,
+                  top: 2,
+                  width: 40,
+                  height: 40,
+                  child: IgnorePointer(
+                    ignoring: !typed,
+                    child: AnimatedScale(
+                      duration: const Duration(milliseconds: 240),
+                      curve: Curves.easeOutBack,
+                      scale: typed ? 1 : 0.3,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 180),
+                        opacity: typed ? 1 : 0,
+                        child: _ComposerButton(
+                          icon: Icons.arrow_upward_rounded,
+                          tooltip: 'Сохранить заметку',
+                          palette: palette,
+                          background: palette.accent,
+                          foreground: palette.navInk,
+                          onPressed: _saving ? null : _addNote,
+                          busy: _saving,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -909,13 +908,13 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 24),
         decoration: BoxDecoration(
           color: palette.card,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: palette.border),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('🛠️', style: TextStyle(fontSize: 25)),
+            Icon(Icons.construction_rounded, size: 24, color: palette.muted),
             const SizedBox(height: 7),
             Text(
               'Раздел «$section» в разработке',
@@ -964,20 +963,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   height: 145,
                   decoration: BoxDecoration(
                     borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(38),
-                      topRight: Radius.circular(38),
-                      bottomLeft: Radius.circular(48),
-                      bottomRight: Radius.circular(48),
+                      topLeft: Radius.circular(18),
+                      topRight: Radius.circular(18),
+                      bottomLeft: Radius.circular(22),
+                      bottomRight: Radius.circular(22),
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.65),
-                        blurRadius: 32,
-                        offset: const Offset(0, 16),
+                        color: Colors.black.withValues(alpha: 0.45),
+                        blurRadius: 24,
+                        offset: const Offset(0, 12),
                       ),
                       BoxShadow(
-                        color: palette.accent.withValues(alpha: 0.13),
-                        blurRadius: 24,
+                        color: palette.graphLine.withValues(alpha: 0.08),
+                        blurRadius: 18,
                       ),
                     ],
                   ),
@@ -1020,12 +1019,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () {},
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(26),
+                    borderRadius: BorderRadius.circular(18),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        blurRadius: 30,
-                        offset: const Offset(0, 14),
+                        color: Colors.black.withValues(alpha: 0.45),
+                        blurRadius: 24,
+                        offset: const Offset(0, 12),
                       ),
                     ],
                   ),
@@ -1075,7 +1074,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 decoration: BoxDecoration(
                   color: palette.card.withValues(alpha: 0.97),
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: palette.border),
                   boxShadow: [
                     BoxShadow(
@@ -1136,62 +1135,13 @@ class _CircleIconButton extends StatelessWidget {
   }
 }
 
-class _StatusButton extends StatelessWidget {
-  const _StatusButton({
-    required this.healthy,
-    required this.palette,
-    required this.onPressed,
-  });
-
-  final bool healthy;
-  final OffloadPalette palette;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = healthy ? palette.accent : palette.warning;
-    return Tooltip(
-      message: healthy
-          ? 'Данные хранятся на телефоне'
-          : 'Ошибка хранилища · нажмите, чтобы повторить',
-      child: Material(
-        color: palette.card,
-        shape: CircleBorder(side: BorderSide(color: palette.border)),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onPressed,
-          child: SizedBox.square(
-            dimension: 46,
-            child: Center(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                width: 13,
-                height: 13,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.65),
-                      blurRadius: 12,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SmallIconButton extends StatelessWidget {
-  const _SmallIconButton({
+class _ComposerButton extends StatelessWidget {
+  const _ComposerButton({
     required this.icon,
     required this.tooltip,
     required this.palette,
+    required this.background,
+    required this.foreground,
     required this.onPressed,
     this.busy = false,
   });
@@ -1199,6 +1149,8 @@ class _SmallIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final OffloadPalette palette;
+  final Color background;
+  final Color foreground;
   final VoidCallback? onPressed;
   final bool busy;
 
@@ -1206,27 +1158,24 @@ class _SmallIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
-      child: InkResponse(
-        onTap: onPressed,
-        radius: 18,
-        customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: 30,
-          height: 40,
+      child: Material(
+        color: background,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
           child: Center(
             child: busy
                 ? SizedBox.square(
-                    dimension: 14,
+                    dimension: 15,
                     child: CircularProgressIndicator(
                       strokeWidth: 1.8,
-                      color: palette.muted,
+                      color: foreground,
                     ),
                   )
-                : Icon(
-                    icon,
-                    size: 20,
-                    color: palette.muted,
-                  ),
+                : Icon(icon, size: 20, color: foreground),
           ),
         ),
       ),
@@ -1253,7 +1202,7 @@ class _StorageBanner extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 5, 5, 5),
         decoration: BoxDecoration(
           color: palette.warning.withValues(alpha: 0.11),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: palette.warning.withValues(alpha: 0.24),
           ),
@@ -1326,7 +1275,7 @@ class _NoteCard extends StatelessWidget {
       child: Material(
         color: palette.card,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: palette.border),
         ),
         clipBehavior: Clip.antiAlias,
@@ -1334,29 +1283,23 @@ class _NoteCard extends StatelessWidget {
           onTap: onToggle,
           onLongPress: onEdit,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(19, 12, 8, 12),
+            padding: const EdgeInsets.fromLTRB(16, 10, 6, 10),
             child: Row(
               children: [
-                if (note.color.isNotEmpty) ...[
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: _hexColor(note.color),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: _hexColor(note.color).withValues(alpha: 0.6),
-                          blurRadius: 8,
-                        ),
-                      ],
+                Container(
+                  width: 5,
+                  height: 5,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: palette.muted.withValues(
+                      alpha: note.completed ? 0.28 : 0.55,
                     ),
+                    shape: BoxShape.circle,
                   ),
-                  const SizedBox(width: 9),
-                ],
+                ),
                 Expanded(
                   child: Text(
-                    '${note.icon} ${note.text}',
+                    note.text,
                     style: textStyle,
                   ),
                 ),
@@ -1394,14 +1337,5 @@ class _NoteCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  Color _hexColor(String value) {
-    final clean = value.replaceFirst('#', '');
-    final parsed = int.tryParse(clean, radix: 16);
-    if (parsed == null) {
-      return palette.muted;
-    }
-    return Color(0xFF000000 | parsed);
   }
 }

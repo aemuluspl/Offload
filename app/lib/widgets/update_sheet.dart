@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../services/apk_installer.dart';
 import '../services/update_service.dart';
 import '../theme/offload_theme.dart';
+import '../utils/version.dart';
 
 /// Открывает нижнюю панель проверки обновлений.
 Future<void> showUpdateSheet(BuildContext context) {
@@ -193,7 +194,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
     return Container(
       decoration: BoxDecoration(
         color: palette.background,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
         border: Border(top: BorderSide(color: palette.border)),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -331,6 +332,8 @@ class _UpdateSheetState extends State<UpdateSheet> {
     }
 
     final size = info.sizeBytes > 0 ? _formatBytes(info.sizeBytes) : null;
+    final signatureChange = _currentVersion == '1.0.1' &&
+        compareVersions(info.version, '1.0.2') >= 0;
     final progress = _total > 0
         ? (_received / _total).clamp(0.0, 1.0).toDouble()
         : null;
@@ -341,9 +344,12 @@ class _UpdateSheetState extends State<UpdateSheet> {
         icon: Icons.new_releases_outlined,
         color: palette.accent,
         title: 'Доступна версия ${info.version}',
-        text: size == null
-            ? 'Можно скачать и установить поверх текущей.'
-            : 'Размер файла: $size. Установка поверх сохранит заметки.',
+        text: signatureChange
+            ? 'Версия 1.0.2 подписана новым ключом. Android не установит её '
+                'поверх 1.0.1: удалите старую версию и установите APK начисто.'
+            : size == null
+                ? 'Можно скачать и установить поверх текущей.'
+                : 'Размер файла: $size. Установка поверх сохранит заметки.',
       ),
       if (info.notes.isNotEmpty) ...[
         const SizedBox(height: 12),
@@ -375,7 +381,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
             children: [
               Expanded(
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(6),
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 6,
@@ -475,7 +481,7 @@ class _HintCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
       child: Row(
@@ -530,10 +536,10 @@ class _SheetButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: primary ? palette.accent : palette.card,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
           child: Center(

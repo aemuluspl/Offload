@@ -11,7 +11,6 @@ abstract class NoteStore {
     int id, {
     String? text,
     bool? completed,
-    String? color,
   });
 
   Future<void> delete(int id);

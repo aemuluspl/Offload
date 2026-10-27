@@ -78,7 +78,6 @@ class JsonNoteStore implements NoteStore {
     int id, {
     String? text,
     bool? completed,
-    String? color,
   }) {
     return _serialized(() async {
       await _ensureLoaded();
@@ -89,7 +88,6 @@ class JsonNoteStore implements NoteStore {
       final updated = _notes[index].copyWith(
         text: text == null ? null : _cleanText(text),
         completed: completed,
-        color: color,
       );
       _notes[index] = updated;
       await _persist();

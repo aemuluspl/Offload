@@ -5,7 +5,7 @@
     <!-- Разрешение нужно, чтобы Android разрешил открыть установщик APK. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
-        android:label="offload"
+        android:label="Offload"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

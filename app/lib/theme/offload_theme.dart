@@ -37,39 +37,39 @@ class OffloadPalette extends ThemeExtension<OffloadPalette> {
   final Color graphGrid;
 
   static const dark = OffloadPalette(
-    page: Color(0xFF050507),
-    background: Color(0xFF0C0D10),
-    card: Color(0xFF1B1D22),
-    graph: Color(0xFF181A1F),
+    page: Color(0xFF000000),
+    background: Color(0xFF0A0A0A),
+    card: Color(0xFF151515),
+    graph: Color(0xFF0E0E0E),
     border: Color(0x24FFFFFF),
-    text: Color(0xFFF3F4F6),
-    muted: Color(0xFF9CA3AF),
-    accent: Color(0xFF4ADE80),
-    accentSoft: Color(0x334ADE80),
+    text: Color(0xFFF7F7F7),
+    muted: Color(0xFFA3A3A3),
+    accent: Color(0xFFFFFFFF),
+    accentSoft: Color(0x1FFFFFFF),
     navIndicator: Color(0xFFFFFFFF),
-    navInk: Color(0xFF0C0D10),
-    danger: Color(0xFFF87171),
-    warning: Color(0xFFF59E0B),
-    graphLine: Color(0xA6D4D4D8),
+    navInk: Color(0xFF0A0A0A),
+    danger: Color(0xFFE5E5E5),
+    warning: Color(0xFFBDBDBD),
+    graphLine: Color(0x8CFFFFFF),
     graphGrid: Color(0x0DFFFFFF),
   );
 
   static const light = OffloadPalette(
-    page: Color(0xFF050507),
-    background: Color(0xFFF1F5F9),
+    page: Color(0xFFE8E8E8),
+    background: Color(0xFFF7F7F7),
     card: Color(0xFFFFFFFF),
-    graph: Color(0xFFF8FAFC),
-    border: Color(0x1F0F172A),
-    text: Color(0xFF0F172A),
-    muted: Color(0xFF64748B),
-    accent: Color(0xFF22C55E),
-    accentSoft: Color(0x3322C55E),
-    navIndicator: Color(0xFF0F172A),
+    graph: Color(0xFFFFFFFF),
+    border: Color(0x1F000000),
+    text: Color(0xFF0A0A0A),
+    muted: Color(0xFF6B6B6B),
+    accent: Color(0xFF000000),
+    accentSoft: Color(0x14000000),
+    navIndicator: Color(0xFF000000),
     navInk: Color(0xFFFFFFFF),
-    danger: Color(0xFFDC2626),
-    warning: Color(0xFFD97706),
-    graphLine: Color(0x80475569),
-    graphGrid: Color(0x0D0F172A),
+    danger: Color(0xFF1A1A1A),
+    warning: Color(0xFF444444),
+    graphLine: Color(0x73000000),
+    graphGrid: Color(0x0D000000),
   );
 
   @override
@@ -148,10 +148,15 @@ ThemeData buildOffloadTheme({required bool dark}) {
     surface: palette.card,
     primary: palette.accent,
   ).copyWith(
+    primary: palette.accent,
+    onPrimary: palette.navInk,
+    secondary: palette.accent,
+    onSecondary: palette.navInk,
     surface: palette.card,
     onSurface: palette.text,
     outline: palette.border,
     error: palette.danger,
+    onError: palette.navInk,
   );
 
   return base.copyWith(
@@ -176,7 +181,7 @@ ThemeData buildOffloadTheme({required bool dark}) {
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(
         color: palette.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: palette.border),
       ),
       textStyle: TextStyle(
@@ -193,7 +198,7 @@ ThemeData buildOffloadTheme({required bool dark}) {
         fontSize: 12,
       ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: palette.border),
       ),
       behavior: SnackBarBehavior.floating,

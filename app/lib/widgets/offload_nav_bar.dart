@@ -26,92 +26,104 @@ class OffloadNavBar extends StatelessWidget {
   final VoidCallback onTrends;
   final VoidCallback onSettings;
 
-  static const _height = 74.0;
-  static const _buttonSize = 56.0;
-  static const _horizontalPadding = 16.0;
+  static const _height = 62.0;
+  static const _cellSize = 46.0;
+  static const _horizontalPadding = 8.0;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final duration = Duration(milliseconds: animationMs.round());
+    final light = palette.graph.computeLuminance() > 0.5;
 
     return Container(
       height: _height,
       padding: const EdgeInsets.symmetric(horizontal: _horizontalPadding),
       decoration: BoxDecoration(
         color: palette.card,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: palette.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 18,
-            offset: const Offset(0, 5),
+            color: Colors.black.withValues(alpha: light ? 0.07 : 0.28),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final step = (constraints.maxWidth - _buttonSize) / 4;
+          final cell = constraints.maxWidth / 5;
           return Stack(
-            clipBehavior: Clip.none,
             children: [
               AnimatedPositioned(
                 duration: duration,
                 curve: Curves.easeOutCubic,
-                left: step * activeIndex,
-                top: (_height - _buttonSize) / 2,
-                width: _buttonSize,
-                height: _buttonSize,
+                left: cell * activeIndex + (cell - _cellSize) / 2,
+                top: (_height - _cellSize) / 2,
+                width: _cellSize,
+                height: _cellSize,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: palette.navIndicator,
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: palette.navIndicator.withValues(alpha: 0.4),
-                        blurRadius: 20,
+                        color: Colors.black.withValues(
+                          alpha: light ? 0.10 : 0.24,
+                        ),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
                       ),
                     ],
                   ),
                 ),
               ),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _NavButton(
-                    icon: Icons.description_outlined,
-                    tooltip: 'Заметки',
-                    active: activeIndex == 0,
-                    duration: duration,
-                    onTap: onNotes,
+                  Expanded(
+                    child: _NavCell(
+                      icon: Icons.description_outlined,
+                      tooltip: 'Заметки',
+                      active: activeIndex == 0,
+                      duration: duration,
+                      onTap: onNotes,
+                    ),
                   ),
-                  _NavButton(
-                    icon: Icons.insert_chart_outlined_rounded,
-                    tooltip: 'Аналитика',
-                    active: activeIndex == 1,
-                    duration: duration,
-                    onTap: onStats,
+                  Expanded(
+                    child: _NavCell(
+                      icon: Icons.insert_chart_outlined_rounded,
+                      tooltip: 'Аналитика',
+                      active: activeIndex == 1,
+                      duration: duration,
+                      onTap: onStats,
+                    ),
                   ),
-                  _CenterNavButton(
-                    active: activeIndex == 2,
-                    duration: duration,
-                    spinToken: graphSpinToken,
-                    onTap: onGraph,
+                  Expanded(
+                    child: _GraphNavCell(
+                      active: activeIndex == 2,
+                      duration: duration,
+                      pulseToken: graphSpinToken,
+                      onTap: onGraph,
+                    ),
                   ),
-                  _NavButton(
-                    icon: Icons.show_chart_rounded,
-                    tooltip: 'Динамика',
-                    active: activeIndex == 3,
-                    duration: duration,
-                    onTap: onTrends,
+                  Expanded(
+                    child: _NavCell(
+                      icon: Icons.show_chart_rounded,
+                      tooltip: 'Динамика',
+                      active: activeIndex == 3,
+                      duration: duration,
+                      onTap: onTrends,
+                    ),
                   ),
-                  _NavButton(
-                    icon: Icons.settings_outlined,
-                    tooltip: 'Настройки',
-                    active: activeIndex == 4,
-                    duration: duration,
-                    onTap: onSettings,
+                  Expanded(
+                    child: _NavCell(
+                      icon: Icons.settings_outlined,
+                      tooltip: 'Настройки',
+                      active: activeIndex == 4,
+                      duration: duration,
+                      onTap: onSettings,
+                    ),
                   ),
                 ],
               ),
@@ -123,8 +135,8 @@ class OffloadNavBar extends StatelessWidget {
   }
 }
 
-class _NavButton extends StatelessWidget {
-  const _NavButton({
+class _NavCell extends StatelessWidget {
+  const _NavCell({
     required this.icon,
     required this.tooltip,
     required this.active,
@@ -141,27 +153,37 @@ class _NavButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    return Tooltip(
-      message: tooltip,
-      child: SizedBox.square(
-        dimension: 56,
-        child: Material(
-          color: Colors.transparent,
-          shape: const CircleBorder(),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(end: active ? 1 : 0),
-              duration: duration,
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return Icon(
-                  icon,
-                  size: 23,
-                  color: Color.lerp(palette.muted, palette.navInk, value),
-                );
-              },
+    return Center(
+      child: Tooltip(
+        message: tooltip,
+        child: SizedBox.square(
+          dimension: OffloadNavBar._cellSize,
+          child: Material(
+            color: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(end: active ? 1 : 0),
+                duration: duration,
+                curve: Curves.easeOut,
+                builder: (context, value, child) {
+                  return Center(
+                    child: Icon(
+                      icon,
+                      size: 22,
+                      color: Color.lerp(
+                        palette.muted,
+                        palette.navInk,
+                        value,
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -170,42 +192,52 @@ class _NavButton extends StatelessWidget {
   }
 }
 
-class _CenterNavButton extends StatelessWidget {
-  const _CenterNavButton({
+class _GraphNavCell extends StatelessWidget {
+  const _GraphNavCell({
     required this.active,
     required this.duration,
-    required this.spinToken,
+    required this.pulseToken,
     required this.onTap,
   });
 
   final bool active;
   final Duration duration;
-  final int spinToken;
+  final int pulseToken;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    return Tooltip(
-      message: 'Граф',
-      child: SizedBox.square(
-        dimension: 56,
-        child: Material(
-          color: Colors.transparent,
-          shape: const CircleBorder(),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(end: active ? 1 : 0),
-              duration: duration,
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return GraphNavIcon(
-                  color: Color.lerp(palette.muted, palette.navInk, value)!,
-                  spinToken: spinToken,
-                );
-              },
+    return Center(
+      child: Tooltip(
+        message: 'Граф',
+        child: SizedBox.square(
+          dimension: OffloadNavBar._cellSize,
+          child: Material(
+            color: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(end: active ? 1 : 0),
+                duration: duration,
+                curve: Curves.easeOut,
+                builder: (context, value, child) {
+                  return Center(
+                    child: GraphNavIcon(
+                      color: Color.lerp(
+                        palette.muted,
+                        palette.navInk,
+                        value,
+                      )!,
+                      pulseToken: pulseToken,
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -214,204 +246,96 @@ class _CenterNavButton extends StatelessWidget {
   }
 }
 
-class GraphNavIcon extends StatefulWidget {
+/// Плоская иконка графа: узлы и связи без 3D-вращения.
+class GraphNavIcon extends StatelessWidget {
   const GraphNavIcon({
     super.key,
     required this.color,
-    required this.spinToken,
+    required this.pulseToken,
   });
 
   final Color color;
-  final int spinToken;
+  final int pulseToken;
 
-  @override
-  State<GraphNavIcon> createState() => _GraphNavIconState();
-}
-
-class _GraphNavIconState extends State<GraphNavIcon>
-    with SingleTickerProviderStateMixin {
-  static const _vertices = [
-    _Vertex(0, 0, 0, 2.35),
-    _Vertex(-6.2, -5.8, 3.2, 1.95),
-    _Vertex(6.4, -4.8, -2.8, 1.95),
-    _Vertex(-5.5, 5.8, -3.4, 1.95),
-    _Vertex(5.2, 5.6, 3.8, 1.95),
-    _Vertex(0.5, -7.2, -5.2, 1.65),
+  static const _nodes = [
+    Offset(0.50, 0.50),
+    Offset(0.20, 0.25),
+    Offset(0.81, 0.27),
+    Offset(0.23, 0.78),
+    Offset(0.79, 0.76),
+    Offset(0.52, 0.12),
   ];
   static const _edges = [
     [0, 1],
     [0, 2],
     [0, 3],
     [0, 4],
-    [0, 5],
     [1, 5],
-    [2, 4],
-    [1, 3],
+    [2, 5],
+    [3, 4],
   ];
-
-  late final AnimationController _controller;
-  double _yaw = 0.25;
-  double _pitch = 0.2;
-  double _roll = 0;
-  double _startYaw = 0.25;
-  double _startPitch = 0.2;
-  double _startRoll = 0;
-  double _endYaw = 0.25;
-  double _endPitch = 0.2;
-  double _endRoll = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 420),
-    )..addListener(() {
-        final progress = Curves.easeOutCubic.transform(_controller.value);
-        setState(() {
-          _yaw = _startYaw + (_endYaw - _startYaw) * progress;
-          _pitch = _startPitch + (_endPitch - _startPitch) * progress;
-          _roll = _startRoll + (_endRoll - _startRoll) * progress;
-        });
-      });
-  }
-
-  @override
-  void didUpdateWidget(covariant GraphNavIcon oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.spinToken != oldWidget.spinToken) {
-      _startYaw = _yaw;
-      _startPitch = _pitch;
-      _startRoll = _roll;
-      final direction = widget.spinToken.isEven ? 1.0 : -1.0;
-      _endYaw = _yaw + direction * (1.2 + (widget.spinToken % 4) * 0.12);
-      _endPitch = _pitch + direction * 0.8;
-      _endRoll = _roll + (widget.spinToken.isEven ? 0.32 : -0.32);
-      _controller.forward(from: 0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     return SizedBox.square(
-      dimension: 28,
-      child: CustomPaint(
-        painter: _GraphIconPainter(
-          color: widget.color,
-          yaw: _yaw,
-          pitch: _pitch,
-          roll: _roll,
-          vertices: _vertices,
-          edges: _edges,
-        ),
+      dimension: 27,
+      child: TweenAnimationBuilder<double>(
+        key: ValueKey(pulseToken),
+        tween: Tween(begin: pulseToken == 0 ? 1 : 0, end: 1),
+        duration: const Duration(milliseconds: 620),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, child) {
+          return CustomPaint(
+            painter: _GraphIconPainter(
+              color: color,
+              pulse: pulseToken == 0 ? 1 : value,
+            ),
+          );
+        },
       ),
     );
   }
 }
 
-class _Vertex {
-  const _Vertex(this.x, this.y, this.z, this.radius);
-
-  final double x;
-  final double y;
-  final double z;
-  final double radius;
-}
-
-class _ProjectedVertex {
-  const _ProjectedVertex(this.x, this.y, this.depth, this.radius);
-
-  final double x;
-  final double y;
-  final double depth;
-  final double radius;
-}
-
 class _GraphIconPainter extends CustomPainter {
-  _GraphIconPainter({
-    required this.color,
-    required this.yaw,
-    required this.pitch,
-    required this.roll,
-    required this.vertices,
-    required this.edges,
-  });
+  _GraphIconPainter({required this.color, required this.pulse});
 
   final Color color;
-  final double yaw;
-  final double pitch;
-  final double roll;
-  final List<_Vertex> vertices;
-  final List<List<int>> edges;
+  final double pulse;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final scale = math.min(size.width, size.height) / 24;
-    final cosYaw = math.cos(yaw);
-    final sinYaw = math.sin(yaw);
-    final cosPitch = math.cos(pitch);
-    final sinPitch = math.sin(pitch);
-    final cosRoll = math.cos(roll);
-    final sinRoll = math.sin(roll);
-
-    final projected = vertices.map((vertex) {
-      final x1 = vertex.x * cosYaw + vertex.z * sinYaw;
-      final z1 = -vertex.x * sinYaw + vertex.z * cosYaw;
-      final y1 = vertex.y;
-      final y2 = y1 * cosPitch - z1 * sinPitch;
-      final z2 = y1 * sinPitch + z1 * cosPitch;
-      final x2 = x1;
-      final x3 = x2 * cosRoll - y2 * sinRoll;
-      final y3 = x2 * sinRoll + y2 * cosRoll;
-      final perspective = 26 / (26 - z2);
-      return _ProjectedVertex(
-        (12 + x3 * perspective) * scale,
-        (12 + y3 * perspective) * scale,
-        z2,
-        math.max(1.2, vertex.radius * perspective * 0.92) * scale,
-      );
-    }).toList(growable: false);
-
-    final edgePaint = Paint()
-      ..strokeWidth = 1.75 * scale
+    final scale = math.min(size.width, size.height);
+    final line = Paint()
+      ..color = color.withValues(alpha: 0.72)
+      ..strokeWidth = 1.35
       ..strokeCap = StrokeCap.round;
-    for (final edge in edges) {
-      final first = projected[edge[0]];
-      final second = projected[edge[1]];
-      final averageDepth = (first.depth + second.depth) / 2;
-      final opacity = ((averageDepth + 8) / 13).clamp(0.35, 1.0).toDouble();
-      edgePaint.color = color.withValues(alpha: opacity);
+    for (final edge in GraphNavIcon._edges) {
+      final first = GraphNavIcon._nodes[edge[0]];
+      final second = GraphNavIcon._nodes[edge[1]];
       canvas.drawLine(
-        Offset(first.x, first.y),
-        Offset(second.x, second.y),
-        edgePaint,
+        Offset(first.dx * scale, first.dy * scale),
+        Offset(second.dx * scale, second.dy * scale),
+        line,
       );
     }
-
-    final sorted = [...projected]..sort((a, b) => a.depth.compareTo(b.depth));
-    final nodePaint = Paint()..style = PaintingStyle.fill;
-    for (final vertex in sorted) {
-      final opacity = ((vertex.depth + 8) / 12).clamp(0.45, 1.0).toDouble();
-      nodePaint.color = color.withValues(alpha: opacity);
+    final fill = Paint()..color = color;
+    for (var index = 0; index < GraphNavIcon._nodes.length; index++) {
+      final node = GraphNavIcon._nodes[index];
+      final wave = math.sin(
+        (pulse * math.pi + index * 0.55).clamp(0.0, math.pi * 2),
+      );
+      final radius = 2.35 + (pulse < 1 ? wave * 0.55 : 0);
       canvas.drawCircle(
-        Offset(vertex.x, vertex.y),
-        vertex.radius,
-        nodePaint,
+        Offset(node.dx * scale, node.dy * scale),
+        math.max(1.6, radius),
+        fill,
       );
     }
   }
 
   @override
   bool shouldRepaint(covariant _GraphIconPainter oldDelegate) {
-    return oldDelegate.yaw != yaw ||
-        oldDelegate.pitch != pitch ||
-        oldDelegate.roll != roll ||
-        oldDelegate.color != color;
+    return oldDelegate.color != color || oldDelegate.pulse != pulse;
   }
 }

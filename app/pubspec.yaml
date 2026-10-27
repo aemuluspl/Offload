@@ -1,7 +1,7 @@
 name: offload
 description: "Offload (Mind Note) — быстрый захват мыслей. Полностью локально на телефоне."
 publish_to: "none"
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

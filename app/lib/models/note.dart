@@ -6,14 +6,12 @@ class Note {
     required this.text,
     required this.createdAt,
     this.completed = false,
-    this.color = '',
   });
 
   final int id;
   final String text;
   final DateTime createdAt;
   final bool completed;
-  final String color;
 
   factory Note.fromJson(Map<String, dynamic> json) {
     final id = json['id'];
@@ -29,7 +27,6 @@ class Note {
       text: text,
       createdAt: DateTime.parse(createdAt),
       completed: json['completed'] == true,
-      color: json['color'] is String ? json['color'] as String : '',
     );
   }
 
@@ -57,8 +54,6 @@ class Note {
     return normalized.contains('эмоц') || normalized.contains('настро');
   }
 
-  String get icon => isEmotion ? '🎯' : '📝';
-
   List<String> get tags => extractHashtags(text);
 
   String get graphLabel {
@@ -74,14 +69,12 @@ class Note {
   Note copyWith({
     String? text,
     bool? completed,
-    String? color,
   }) {
     return Note(
       id: id,
       text: text ?? this.text,
       createdAt: createdAt,
       completed: completed ?? this.completed,
-      color: color ?? this.color,
     );
   }
 
@@ -91,7 +84,6 @@ class Note {
       'text': text,
       'created_at': createdAt.toUtc().toIso8601String(),
       'completed': completed,
-      'color': color,
     };
   }
 }

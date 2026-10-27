@@ -1,10 +1,15 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offload/data/json_note_store.dart';
 import 'package:offload/data/note_store.dart';
+import 'package:offload/models/app_settings.dart';
 import 'package:offload/models/note.dart';
+import 'package:offload/screens/home_screen.dart';
+import 'package:offload/theme/offload_theme.dart';
 import 'package:offload/utils/hashtags.dart';
+import 'package:offload/widgets/graph_orb.dart';
 
 void main() {
   test('Note parses the stored payload', () {
@@ -13,6 +18,7 @@ void main() {
       'text': 'Проверить MVP #3d #школа',
       'created_at': '2026-10-27T09:30:00.000Z',
       'completed': true,
+      // Старое поле color из версии 1.0.1 должно игнорироваться.
       'color': '#4ADE80',
     });
 
@@ -20,7 +26,6 @@ void main() {
     expect(note.text, 'Проверить MVP #3d #школа');
     expect(note.createdAt.isUtc, isTrue);
     expect(note.completed, isTrue);
-    expect(note.color, '#4ADE80');
     expect(note.tags, ['#3d', '#школа']);
     expect(note.graphLabel, 'Проверить MVP (#3d #школа)');
   });
@@ -42,7 +47,6 @@ void main() {
     });
 
     expect(note.completed, isFalse);
-    expect(note.color, isEmpty);
     expect(note.tags, isEmpty);
     expect(note.graphLabel, 'Без тегов');
   });
@@ -53,7 +57,6 @@ void main() {
       text: 'Купить кофе #быт',
       createdAt: DateTime.utc(2026, 10, 27, 12, 30),
       completed: true,
-      color: '#38BDF8',
     );
 
     final restored = Note.fromJson(original.toJson());
@@ -62,7 +65,6 @@ void main() {
     expect(restored.text, original.text);
     expect(restored.createdAt, original.createdAt);
     expect(restored.completed, isTrue);
-    expect(restored.color, '#38BDF8');
   });
 
   group('JsonNoteStore', () {
@@ -103,7 +105,7 @@ void main() {
       expect(notes.first.id, greaterThan(notes.last.id));
     });
 
-    test('updates text, state and color', () async {
+    test('updates text and state', () async {
       final note = await store.add('черновик');
 
       final edited = await store.update(note.id, text: '  финал  ');
@@ -112,10 +114,6 @@ void main() {
       final completed = await store.update(note.id, completed: true);
       expect(completed.completed, isTrue);
       expect(completed.text, 'финал');
-
-      final colored = await store.update(note.id, color: '#F43F5E');
-      expect(colored.color, '#F43F5E');
-      expect(colored.completed, isTrue);
     });
 
     test('deletes notes and survives reopen', () async {
@@ -170,4 +168,127 @@ void main() {
       expect(await file.readAsString(), contains('Проверить файл'));
     });
   });
+
+  testWidgets('composer morphs between mic and send', (tester) async {
+    final store = _MemoryNoteStore();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildOffloadTheme(dark: true),
+        home: HomeScreen(
+          settings: const AppSettings(),
+          onSettingsChanged: (_) {},
+          noteStore: store,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
+    final micBefore = tester.getCenter(find.byIcon(Icons.mic_none_rounded));
+
+    final composer = find.byKey(const Key('composer-input'));
+    await tester.enterText(composer, 'Новая мысль #идея');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    final micAfter = tester.getCenter(find.byIcon(Icons.mic_none_rounded));
+    expect(micAfter.dx, lessThan(micBefore.dx));
+    expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(store.notes, hasLength(1));
+    expect(store.notes.single.text, 'Новая мысль #идея');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('2D graph renders and starts the history timeline', (tester) async {
+    final notes = [
+      Note(
+        id: 3,
+        text: 'Третья #идея',
+        createdAt: DateTime.utc(2026, 10, 28, 12),
+      ),
+      Note(
+        id: 2,
+        text: 'Вторая #идея',
+        createdAt: DateTime.utc(2026, 10, 28, 11),
+      ),
+      Note(
+        id: 1,
+        text: 'Первая #идея',
+        createdAt: DateTime.utc(2026, 10, 28, 10),
+      ),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildOffloadTheme(dark: true),
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 360,
+              height: 260,
+              child: GraphOrb(
+                notes: notes,
+                nodeScale: 1,
+                activeTag: null,
+                onTagSelected: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(tester.takeException(), isNull);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(tester.takeException(), isNull);
+  });
+}
+
+class _MemoryNoteStore implements NoteStore {
+  final List<Note> notes = [];
+  int _nextId = 1;
+
+  @override
+  Future<List<Note>> load() async => List<Note>.unmodifiable(notes);
+
+  @override
+  Future<Note> add(String text) async {
+    final note = Note(
+      id: _nextId++,
+      text: text.trim(),
+      createdAt: DateTime.now().toUtc(),
+    );
+    notes.insert(0, note);
+    return note;
+  }
+
+  @override
+  Future<Note> update(
+    int id, {
+    String? text,
+    bool? completed,
+  }) async {
+    final index = notes.indexWhere((note) => note.id == id);
+    if (index < 0) {
+      throw const StorageException('Заметка не найдена');
+    }
+    final updated = notes[index].copyWith(text: text, completed: completed);
+    notes[index] = updated;
+    return updated;
+  }
+
+  @override
+  Future<void> delete(int id) async {
+    notes.removeWhere((note) => note.id == id);
+  }
 }
