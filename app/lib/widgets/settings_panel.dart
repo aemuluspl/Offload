@@ -51,7 +51,7 @@ class SettingsPanel extends StatelessWidget {
                   color:
                       (storageHealthy ? palette.accent : palette.warning)
                           .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(palette.radius),
                 ),
                 child: Text(
                   storageHealthy ? 'Локально' : 'Ошибка данных',
@@ -142,6 +142,99 @@ class SettingsPanel extends StatelessWidget {
                 onChanged: (value) {
                   onSettingsChanged(settings.copyWith(navSpeedMs: value));
                 },
+              ),
+            ],
+          ),
+        ),
+        _SettingsCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.tune_rounded,
+                    size: 17,
+                    color: palette.accent,
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Кастомизация интерфейса',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'Меняется сразу, без перезапуска',
+                style: TextStyle(fontSize: 9.5, color: palette.muted),
+              ),
+              const SizedBox(height: 8),
+              _SliderHeader(
+                title: 'Радиус скруглений',
+                value: '${settings.cornerRadius.round()} px',
+                palette: palette,
+              ),
+              _StyledSlider(
+                value: settings.cornerRadius,
+                min: 4,
+                max: 40,
+                divisions: 18,
+                onChanged: (value) {
+                  onSettingsChanged(settings.copyWith(cornerRadius: value));
+                },
+              ),
+              _SliderHints(
+                left: 'Почти квадрат',
+                center: 'Мягкие',
+                right: 'Овальные',
+                palette: palette,
+              ),
+              Divider(height: 18, color: palette.border),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Глубокий чёрный',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          settings.isDark
+                              ? 'Фон #000000, как рамка телефона'
+                              : 'Доступно в тёмной теме',
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            color: palette.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: settings.isDark && settings.deepBlack,
+                    onChanged: settings.isDark
+                        ? (value) {
+                            onSettingsChanged(
+                              settings.copyWith(deepBlack: value),
+                            );
+                          }
+                        : null,
+                    activeThumbColor: palette.navInk,
+                    activeTrackColor: palette.accent,
+                    inactiveThumbColor: palette.muted,
+                    inactiveTrackColor: palette.border,
+                  ),
+                ],
               ),
             ],
           ),
@@ -261,7 +354,7 @@ class _SettingsCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: palette.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(palette.radius),
         border: Border.all(color: palette.border),
       ),
       child: child,

@@ -194,7 +194,9 @@ class _UpdateSheetState extends State<UpdateSheet> {
     return Container(
       decoration: BoxDecoration(
         color: palette.background,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(palette.radius),
+        ),
         border: Border(top: BorderSide(color: palette.border)),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -481,7 +483,7 @@ class _HintCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(palette.radius),
         border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
       child: Row(
@@ -536,10 +538,10 @@ class _SheetButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: primary ? palette.accent : palette.card,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(palette.radius),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(palette.radius),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
           child: Center(

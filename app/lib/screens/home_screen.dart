@@ -240,7 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return AlertDialog(
           backgroundColor: palette.card,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(palette.radius),
             side: BorderSide(color: palette.border),
           ),
           title: Text(
@@ -272,15 +272,15 @@ class _HomeScreenState extends State<HomeScreen> {
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(palette.radius),
                 borderSide: BorderSide(color: palette.border),
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(palette.radius),
                 borderSide: BorderSide(color: palette.border),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(palette.radius),
                 borderSide: BorderSide(color: palette.accent),
               ),
             ),
@@ -613,7 +613,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
               color: palette.card,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(palette.radius),
               border: Border.all(color: palette.border),
             ),
             child: Row(
@@ -766,7 +766,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
             decoration: BoxDecoration(
               color: palette.card,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(palette.radius),
               border: Border.all(color: palette.border),
             ),
             child: Text(
@@ -809,7 +809,7 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: palette.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(palette.radius),
         border: Border.all(color: palette.border),
       ),
       child: Row(
@@ -908,7 +908,7 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 24),
         decoration: BoxDecoration(
           color: palette.card,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(palette.radius),
           border: Border.all(color: palette.border),
         ),
         child: Column(
@@ -962,12 +962,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   width: 220,
                   height: 145,
                   decoration: BoxDecoration(
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(18),
-                      topRight: Radius.circular(18),
-                      bottomLeft: Radius.circular(22),
-                      bottomRight: Radius.circular(22),
-                    ),
+                    borderRadius: BorderRadius.circular(palette.radius),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.45),
@@ -1019,7 +1014,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () {},
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(palette.radius),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.45),
@@ -1074,7 +1069,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 decoration: BoxDecoration(
                   color: palette.card.withValues(alpha: 0.97),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(palette.radius),
                   border: Border.all(color: palette.border),
                   boxShadow: [
                     BoxShadow(
@@ -1161,7 +1156,7 @@ class _ComposerButton extends StatelessWidget {
       child: Material(
         color: background,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(palette.radius),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -1202,7 +1197,7 @@ class _StorageBanner extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 5, 5, 5),
         decoration: BoxDecoration(
           color: palette.warning.withValues(alpha: 0.11),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(palette.radius),
           border: Border.all(
             color: palette.warning.withValues(alpha: 0.24),
           ),
@@ -1275,7 +1270,7 @@ class _NoteCard extends StatelessWidget {
       child: Material(
         color: palette.card,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(palette.radius),
           side: BorderSide(color: palette.border),
         ),
         clipBehavior: Clip.antiAlias,

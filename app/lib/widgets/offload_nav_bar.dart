@@ -41,7 +41,7 @@ class OffloadNavBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: _horizontalPadding),
       decoration: BoxDecoration(
         color: palette.card,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(palette.radius),
         border: Border.all(color: palette.border),
         boxShadow: [
           BoxShadow(
@@ -66,7 +66,7 @@ class OffloadNavBar extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: palette.navIndicator,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(palette.radius),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(
@@ -161,7 +161,7 @@ class _NavCell extends StatelessWidget {
           child: Material(
             color: Colors.transparent,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(palette.radius),
             ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
@@ -216,7 +216,7 @@ class _GraphNavCell extends StatelessWidget {
           child: Material(
             color: Colors.transparent,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(palette.radius),
             ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
@@ -277,31 +277,33 @@ class GraphNavIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final painter = CustomPaint(painter: _GraphIconPainter(color: color));
+    if (pulseToken == 0) {
+      return SizedBox.square(dimension: 27, child: painter);
+    }
     return SizedBox.square(
       dimension: 27,
       child: TweenAnimationBuilder<double>(
         key: ValueKey(pulseToken),
-        tween: Tween(begin: pulseToken == 0 ? 1 : 0, end: 1),
+        tween: Tween(begin: 0.0, end: 1),
         duration: const Duration(milliseconds: 620),
         curve: Curves.easeOutCubic,
         builder: (context, value, child) {
-          return CustomPaint(
-            painter: _GraphIconPainter(
-              color: color,
-              pulse: pulseToken == 0 ? 1 : value,
-            ),
+          return Transform.rotate(
+            angle: value * math.pi * 2,
+            child: child,
           );
         },
+        child: painter,
       ),
     );
   }
 }
 
 class _GraphIconPainter extends CustomPainter {
-  _GraphIconPainter({required this.color, required this.pulse});
+  _GraphIconPainter({required this.color});
 
   final Color color;
-  final double pulse;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -320,15 +322,10 @@ class _GraphIconPainter extends CustomPainter {
       );
     }
     final fill = Paint()..color = color;
-    for (var index = 0; index < GraphNavIcon._nodes.length; index++) {
-      final node = GraphNavIcon._nodes[index];
-      final wave = math.sin(
-        (pulse * math.pi + index * 0.55).clamp(0.0, math.pi * 2),
-      );
-      final radius = 2.35 + (pulse < 1 ? wave * 0.55 : 0);
+    for (final node in GraphNavIcon._nodes) {
       canvas.drawCircle(
         Offset(node.dx * scale, node.dy * scale),
-        math.max(1.6, radius),
+        2.35,
         fill,
       );
     }
@@ -336,6 +333,6 @@ class _GraphIconPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GraphIconPainter oldDelegate) {
-    return oldDelegate.color != color || oldDelegate.pulse != pulse;
+    return oldDelegate.color != color;
   }
 }

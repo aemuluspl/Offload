@@ -18,6 +18,7 @@ class OffloadPalette extends ThemeExtension<OffloadPalette> {
     required this.warning,
     required this.graphLine,
     required this.graphGrid,
+    required this.radius,
   });
 
   final Color page;
@@ -36,6 +37,9 @@ class OffloadPalette extends ThemeExtension<OffloadPalette> {
   final Color graphLine;
   final Color graphGrid;
 
+  /// Глобальный радиус скруглений. Управляется из настроек.
+  final double radius;
+
   static const dark = OffloadPalette(
     page: Color(0xFF000000),
     background: Color(0xFF0A0A0A),
@@ -52,6 +56,7 @@ class OffloadPalette extends ThemeExtension<OffloadPalette> {
     warning: Color(0xFFBDBDBD),
     graphLine: Color(0x8CFFFFFF),
     graphGrid: Color(0x0DFFFFFF),
+    radius: 24,
   );
 
   static const light = OffloadPalette(
@@ -70,6 +75,7 @@ class OffloadPalette extends ThemeExtension<OffloadPalette> {
     warning: Color(0xFF444444),
     graphLine: Color(0x73000000),
     graphGrid: Color(0x0D000000),
+    radius: 24,
   );
 
   @override
@@ -89,6 +95,7 @@ class OffloadPalette extends ThemeExtension<OffloadPalette> {
     Color? warning,
     Color? graphLine,
     Color? graphGrid,
+    double? radius,
   }) {
     return OffloadPalette(
       page: page ?? this.page,
@@ -106,6 +113,7 @@ class OffloadPalette extends ThemeExtension<OffloadPalette> {
       warning: warning ?? this.warning,
       graphLine: graphLine ?? this.graphLine,
       graphGrid: graphGrid ?? this.graphGrid,
+      radius: radius ?? this.radius,
     );
   }
 
@@ -130,12 +138,27 @@ class OffloadPalette extends ThemeExtension<OffloadPalette> {
       warning: Color.lerp(warning, other.warning, t)!,
       graphLine: Color.lerp(graphLine, other.graphLine, t)!,
       graphGrid: Color.lerp(graphGrid, other.graphGrid, t)!,
+      radius: radius + (other.radius - radius) * t,
     );
   }
 }
 
-ThemeData buildOffloadTheme({required bool dark}) {
-  final palette = dark ? OffloadPalette.dark : OffloadPalette.light;
+ThemeData buildOffloadTheme({
+  required bool dark,
+  double cornerRadius = 24,
+  bool deepBlack = false,
+}) {
+  var palette = (dark ? OffloadPalette.dark : OffloadPalette.light).copyWith(
+    radius: cornerRadius.clamp(4.0, 40.0).toDouble(),
+  );
+  if (dark && deepBlack) {
+    palette = palette.copyWith(
+      page: const Color(0xFF000000),
+      background: const Color(0xFF000000),
+      graph: const Color(0xFF000000),
+    );
+  }
+
   final brightness = dark ? Brightness.dark : Brightness.light;
   final base = ThemeData(
     useMaterial3: true,
@@ -181,7 +204,7 @@ ThemeData buildOffloadTheme({required bool dark}) {
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(
         color: palette.card,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(palette.radius),
         border: Border.all(color: palette.border),
       ),
       textStyle: TextStyle(
@@ -198,7 +221,7 @@ ThemeData buildOffloadTheme({required bool dark}) {
         fontSize: 12,
       ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(palette.radius),
         side: BorderSide(color: palette.border),
       ),
       behavior: SnackBarBehavior.floating,

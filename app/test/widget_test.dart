@@ -10,6 +10,7 @@ import 'package:offload/screens/home_screen.dart';
 import 'package:offload/theme/offload_theme.dart';
 import 'package:offload/utils/hashtags.dart';
 import 'package:offload/widgets/graph_orb.dart';
+import 'package:offload/widgets/settings_panel.dart';
 
 void main() {
   test('Note parses the stored payload', () {
@@ -252,6 +253,94 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     expect(tester.takeException(), isNull);
   });
+
+  test('settings keep custom radius and deep black', () {
+    const base = AppSettings();
+    final custom = base.copyWith(cornerRadius: 36, deepBlack: true);
+
+    expect(base.cornerRadius, 24);
+    expect(base.deepBlack, isFalse);
+    expect(custom.cornerRadius, 36);
+    expect(custom.deepBlack, isTrue);
+  });
+
+  test('deep black palette uses pure black background', () {
+    final theme = buildOffloadTheme(
+      dark: true,
+      cornerRadius: 40,
+      deepBlack: true,
+    );
+    final palette = theme.extension<OffloadPalette>()!;
+
+    expect(palette.radius, 40);
+    expect(palette.background, const Color(0xFF000000));
+    expect(palette.page, const Color(0xFF000000));
+  });
+
+  testWidgets('customization changes the theme in real time', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const _SettingsHarness());
+    await tester.pumpAndSettle();
+
+    OffloadPalette palette() => Theme.of(
+          tester.element(find.byType(SettingsPanel)),
+        ).extension<OffloadPalette>()!;
+
+    expect(palette().radius, 24);
+
+    final sliders = find.byType(Slider);
+    expect(sliders, findsNWidgets(3));
+    await tester.drag(sliders.at(2), const Offset(-120, 0));
+    await tester.pumpAndSettle();
+
+    expect(palette().radius, lessThan(24));
+    expect(palette().background, isNot(const Color(0xFF000000)));
+
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+
+    expect(palette().background, const Color(0xFF000000));
+    expect(tester.takeException(), isNull);
+  });
+}
+
+class _SettingsHarness extends StatefulWidget {
+  const _SettingsHarness();
+
+  @override
+  State<_SettingsHarness> createState() => _SettingsHarnessState();
+}
+
+class _SettingsHarnessState extends State<_SettingsHarness> {
+  AppSettings _settings = const AppSettings();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      theme: buildOffloadTheme(
+        dark: _settings.isDark,
+        cornerRadius: _settings.cornerRadius,
+        deepBlack: _settings.deepBlack,
+      ),
+      home: Scaffold(
+        body: SettingsPanel(
+          settings: _settings,
+          notes: const [],
+          storageHealthy: true,
+          onSettingsChanged: (value) {
+            setState(() {
+              _settings = value;
+            });
+          },
+          onShowDrop: () {},
+        ),
+      ),
+    );
+  }
 }
 
 class _MemoryNoteStore implements NoteStore {

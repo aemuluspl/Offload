@@ -505,14 +505,7 @@ class _GraphOrbState extends State<GraphOrb>
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    final radius = widget.compact
-        ? const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-            bottomLeft: Radius.circular(24),
-            bottomRight: Radius.circular(24),
-          )
-        : BorderRadius.circular(18);
+    final radius = BorderRadius.circular(palette.radius);
 
     return ClipRRect(
       borderRadius: radius,
@@ -679,7 +672,7 @@ class _GraphOrbState extends State<GraphOrb>
                               ),
                               decoration: BoxDecoration(
                                 color: palette.card.withValues(alpha: 0.9),
-                                borderRadius: BorderRadius.circular(7),
+                                borderRadius: BorderRadius.circular(palette.radius),
                                 border: Border.all(color: palette.border),
                               ),
                               child: Text.rich(
@@ -747,7 +740,7 @@ class _GraphChromeButton extends StatelessWidget {
       child: Material(
         color: palette.card.withValues(alpha: 0.92),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(palette.radius),
           side: BorderSide(color: palette.border),
         ),
         clipBehavior: Clip.antiAlias,

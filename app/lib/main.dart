@@ -33,12 +33,23 @@ class OffloadApp extends StatefulWidget {
 class _OffloadAppState extends State<OffloadApp> {
   final SettingsStore _settingsStore = SettingsStore();
   late AppSettings _settings = widget.initialSettings;
+  Timer? _saveTimer;
 
   void _updateSettings(AppSettings settings) {
     setState(() {
       _settings = settings;
     });
-    unawaited(_settingsStore.save(settings));
+    // Ползунок шлёт много событий: пишем на диск с небольшой задержкой.
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 250), () {
+      unawaited(_settingsStore.save(settings));
+    });
+  }
+
+  @override
+  void dispose() {
+    _saveTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -46,7 +57,11 @@ class _OffloadAppState extends State<OffloadApp> {
     return MaterialApp(
       title: 'Offload',
       debugShowCheckedModeBanner: false,
-      theme: buildOffloadTheme(dark: _settings.isDark),
+      theme: buildOffloadTheme(
+        dark: _settings.isDark,
+        cornerRadius: _settings.cornerRadius,
+        deepBlack: _settings.deepBlack,
+      ),
       home: HomeScreen(
         settings: _settings,
         onSettingsChanged: _updateSettings,
