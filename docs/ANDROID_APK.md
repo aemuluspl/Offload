@@ -83,6 +83,31 @@ keytool -genkeypair -v -keystore offload-release.jks `
 и указать новые значения в `key.properties`. Если файла `key.properties` нет,
 сборка пройдёт на отладочной подписи — такой APK годится только для проверки.
 
+### V1-подпись для OEM-установщиков (vivo/iQOO)
+
+AGP 9 собирает APK только с V2+V3, флаг `enableV1Signing` игнорируется.
+Для совместимости с OEM-установщиками V1 добавляется вручную тем же ключом
+через `apksigner.jar` (не через `apksigner.bat` — на Windows батник неверно
+разбирает `--key-pass`):
+
+```powershell
+$sdk = "$env:LOCALAPPDATA\Android\Sdk"
+$bt = Get-ChildItem "$sdk\build-tools" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+$java = Join-Path $env:JAVA_HOME 'bin\java.exe'
+$apk = 'app\build\app\outputs\flutter-apk\app-release.apk'
+$out = 'app\build\app\outputs\flutter-apk\app-release-v1.apk'
+# Пароли из key.properties положить в отдельные файлы store-pass.txt и key-pass.txt.
+& $java -jar "$($bt.FullName)\lib\apksigner.jar" sign `
+  --ks app\android\offload-release.jks --ks-key-alias offload `
+  --ks-pass file:store-pass.txt --key-pass file:key-pass.txt `
+  --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true `
+  --v4-signing-enabled false --in $apk --out $out
+```
+
+Проверка: `apksigner verify -v` показывает `v1: false` при minSdk 24+, потому
+что V1 не нужен современным Android. Реальную V1-подпись видно с
+`--min-sdk-version 23` — тогда все три схемы показывают `true`.
+
 ## 4. Установка на телефон
 
 По кабелю:
@@ -108,7 +133,7 @@ keytool -genkeypair -v -keystore offload-release.jks `
 
 ## 6. Публикация обновления
 
-1. Поднимите версию в `app/pubspec.yaml`, например `1.0.2+3` (номер после `+`
+1. Поднимите версию в `app/pubspec.yaml`, например `1.0.4+5` (номер после `+`
    должен расти, иначе Android может отказаться ставить APK).
 2. Соберите APK:
    ```powershell
@@ -119,10 +144,11 @@ keytool -genkeypair -v -keystore offload-release.jks `
    `flutter build apk --release --dart-define=UPDATE_REPO=владелец/offload`.
    Сейчас там указан `aemuluspl/Offload`.
 3. На GitHub откройте **Releases → Draft a new release**.
-4. Tag: `v1.0.2` (совпадает с версией из pubspec), прикрепите
+4. Tag: `v1.0.4` (совпадает с версией из pubspec), прикрепите
    `app-release.apk` как asset, опишите изменения, опубликуйте.
 5. На телефоне: Настройки → «Обновления» → «Скачать». Приложение увидит
-   `v1.0.2`, скачает APK и откроет установщик.
+   `v1.0.4`, скачает APK, сверит SHA-256 и откроет системный установщик
+   через `PackageInstaller`.
 
 Важно:
 
@@ -130,6 +156,8 @@ keytool -genkeypair -v -keystore offload-release.jks `
 - APK в релизе должен быть один (или первый с расширением `.apk`).
 - Все APK одной ветки подписываются одним ключом. Если ключ потерять, установить
   обновление поверх не получится — только удаление приложения вместе с заметками.
+- В 1.0.4 включены схемы подписи V1 + V2 + V3. V1 нужен части OEM-установщиков
+  (vivo/iQOO); установка идёт через `PackageInstaller` в обход V-Appstore.
 - 1.0.2 подписана новым ключом. Первая установка 1.0.2 требует удалить 1.0.1:
   `adb uninstall com.example.offload`.
 - GitHub API без авторизации разрешает 60 запросов в час на IP. Ручной проверки

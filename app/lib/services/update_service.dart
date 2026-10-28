@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../update_config.dart';
@@ -24,12 +25,16 @@ class UpdateInfo {
     required this.notes,
     required this.apkUrl,
     required this.sizeBytes,
+    this.sha256,
   });
 
   final String version;
   final String notes;
   final String apkUrl;
   final int sizeBytes;
+
+  /// SHA-256 файла из GitHub Release, если GitHub его отдал.
+  final String? sha256;
 }
 
 /// Проверка обновлений через GitHub Releases.
@@ -118,6 +123,7 @@ class UpdateService {
         notes: (decoded['body'] as String? ?? '').trim(),
         apkUrl: apk.url,
         sizeBytes: apk.size,
+        sha256: apk.sha256,
       );
     } on TimeoutException {
       throw const UpdateException(
@@ -197,6 +203,15 @@ class UpdateService {
           'Файл скачался не полностью. Попробуй ещё раз.',
         );
       }
+      final expected = info.sha256;
+      if (expected != null && expected.isNotEmpty) {
+        final actual = await _sha256Of(partial);
+        if (actual != expected.toLowerCase()) {
+          throw const UpdateException(
+            'Файл обновления повреждён при скачивании. Попробуй ещё раз.',
+          );
+        }
+      }
       if (await target.exists()) {
         await target.delete();
       }
@@ -224,6 +239,11 @@ class UpdateService {
     }
   }
 
+  Future<String> _sha256Of(File file) async {
+    final digest = await sha256.bind(file.openRead()).first;
+    return digest.toString();
+  }
+
   Future<void> _removeOldApks(Directory directory) async {
     await for (final entity in directory.list()) {
       if (entity is File &&
@@ -244,9 +264,14 @@ class UpdateService {
       final name = (asset['name'] as String? ?? '').toLowerCase();
       final url = asset['browser_download_url'] as String?;
       if (url != null && name.endsWith('.apk')) {
+        final digest = (asset['digest'] as String? ?? '').trim();
+        final sha256 = digest.toLowerCase().startsWith('sha256:')
+            ? digest.substring(7).toLowerCase()
+            : null;
         return _ApkAsset(
           url: url,
           size: (asset['size'] as num?)?.toInt() ?? 0,
+          sha256: sha256,
         );
       }
     }
@@ -255,8 +280,13 @@ class UpdateService {
 }
 
 class _ApkAsset {
-  const _ApkAsset({required this.url, required this.size});
+  const _ApkAsset({
+    required this.url,
+    required this.size,
+    this.sha256,
+  });
 
   final String url;
   final int size;
+  final String? sha256;
 }

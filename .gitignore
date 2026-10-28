@@ -8,6 +8,7 @@ app/*.iml
 
 # Android
 app/android/.gradle/
+app/android/.kotlin/
 app/android/local.properties
 app/android/key.properties
 app/android/*.jks

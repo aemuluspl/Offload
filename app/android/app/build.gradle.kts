@@ -41,6 +41,12 @@ android {
                 keyPassword = keystoreProperties["keyPassword"] as String
                 storeFile = file(keystoreProperties["storeFile"] as String)
                 storePassword = keystoreProperties["storePassword"] as String
+                // V1 нужен части OEM-установщиков (vivo/iQOO), V2/V3 — современные
+                // схемы Android. Все три используют один и тот же сертификат.
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = false
             }
         }
     }

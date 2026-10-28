@@ -36,6 +36,10 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Результат установки через системный PackageInstaller. -->
+        <receiver
+            android:name=".InstallResultReceiver"
+            android:exported="false" />
         <!-- Отдаёт установщику скачанный APK из кэша приложения. -->
         <provider
             android:name="androidx.core.content.FileProvider"
